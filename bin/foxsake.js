@@ -25,8 +25,6 @@ Usage:
   foxsake run <name|source>   Test in a separate test profile, with console logs saved
   foxsake list                Show converted extensions, installed versions, and shims
   foxsake update [name]       Rebuild + reinstall anything with a newer Web Store version
-  foxsake button install      Set up the "Add to Zen" button on the Chrome Web Store
-  foxsake button uninstall    Remove the button's helper
 
 Options:
   --force        (update) rebuild even if the version hasn't changed
@@ -45,7 +43,7 @@ async function main() {
   });
   let [cmd, ...rest] = positionals;
   if (opts.help || !cmd) return say(HELP);
-  const COMMANDS = { add, convert: convertCmd, scan, install, run, list, update, button };
+  const COMMANDS = { add, convert: convertCmd, scan, install, run, list, update };
   if (!COMMANDS[cmd]) { rest = [cmd, ...rest]; cmd = "add"; }
   await COMMANDS[cmd](rest, opts);
 }
@@ -189,11 +187,5 @@ async function update([target], opts) {
   say(updated ? `\nDone: ${updated} updated.` : "\nEverything is up to date.");
 }
 
-async function button([action]) {
-  const { installButton, uninstallButton } = await import("../src/node/button.js");
-  if (action === "install") await installButton();
-  else if (action === "uninstall") await uninstallButton();
-  else fail('Use "foxsake button install" or "foxsake button uninstall".');
-}
 
 main().catch((e) => fail(e.message || String(e)));

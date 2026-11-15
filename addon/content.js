@@ -1,8 +1,14 @@
-// Fox Sake button: puts "Add to Zen" next to the Web Store's own button on extension pages.
+// Fox Sake: puts an "Add to Zen" button next to the Web Store's own button on extension pages.
 // The Web Store is a single-page app, so the page is re-checked whenever the URL changes.
 (() => {
   const ID_RE = /\/detail\/(?:[^/]+\/)?([a-p]{32})(?:[/?#]|$)/;
   let current = null;
+  let browserName = "Zen";
+  browser.runtime.sendMessage({ type: "foxsake-browser-name" }).then((n) => {
+    if (typeof n === "string" && n) browserName = n;
+    const b = document.querySelector("#foxsake-add button");
+    if (b) b.textContent = `🦊 Add to ${browserName}`;
+  }).catch(() => {});
 
   function findAnchor() {
     // The store's own "Add to Chrome" / "Remove from Chrome" button; fall back to the page title.
@@ -24,7 +30,7 @@
     wrap.id = "foxsake-add";
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.textContent = "🦊 Add to Zen";
+    btn.textContent = `🦊 Add to ${browserName}`;
     const status = document.createElement("div");
     status.className = "foxsake-status";
     wrap.append(btn, status);
@@ -32,27 +38,16 @@
 
     btn.addEventListener("click", async () => {
       btn.disabled = true;
-      btn.textContent = "Converting…";
-      status.textContent = "Downloading and converting. This can take up to a minute for big extensions.";
-      status.dataset.kind = "";
-      let res;
       try {
-        res = await browser.runtime.sendMessage({ type: "foxsake-add", id });
+        const r = await browser.runtime.sendMessage({ type: "foxsake-add", id });
+        if (!r || !r.ok) throw new Error("the request was refused");
+        status.dataset.kind = "ok";
+        status.textContent = "Opened Fox Sake in a new tab.";
       } catch (e) {
-        res = { ok: false, error: String(e) };
+        status.dataset.kind = "error";
+        status.textContent = `Couldn't open Fox Sake: ${e && e.message ? e.message : e}`;
       }
       btn.disabled = false;
-      if (res && res.ok) {
-        btn.textContent = "🦊 Add to Zen";
-        status.dataset.kind = "ok";
-        status.textContent = `Converted ${res.name} ${res.version}. Zen's install prompt is open: click "Add".` +
-          (res.unsupported && res.unsupported.length ? ` Won't work in Zen: ${res.unsupported.join("; ")}.` : "") +
-          (res.shims && res.shims.length ? ` Patched with: ${res.shims.join(", ")}.` : "");
-      } else {
-        btn.textContent = "🦊 Try again";
-        status.dataset.kind = "error";
-        status.textContent = `Couldn't convert: ${(res && res.error) || "unknown error"}`;
-      }
     });
   }
 

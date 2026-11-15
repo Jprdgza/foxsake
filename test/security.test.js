@@ -1,12 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { convert } from "../src/core/convert.js";
 import { safeFilePart, readZip, toText } from "../src/core/archive.js";
+import { downloadCrx, MAX_CRX_BYTES } from "../src/core/webstore.js";
 import { makeZip } from "./helpers.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -53,39 +53,34 @@ test("folder input doesn't follow symlinks", async () => {
   }
 });
 
-/** Sends one native-messaging frame to the helper and returns its parsed reply. */
-function askHelper(payload, rawBody) {
-  return new Promise((resolve) => {
-    const p = spawn(process.execPath, [join(ROOT, "src", "node", "native-host.js")]);
-    let out = Buffer.alloc(0);
-    p.stdout.on("data", (d) => (out = Buffer.concat([out, d])));
-    p.on("exit", () => resolve(out.length >= 4 ? JSON.parse(out.subarray(4, 4 + out.readUInt32LE(0)).toString()) : null));
-    const body = rawBody ?? Buffer.from(JSON.stringify(payload));
-    const head = Buffer.alloc(4);
-    head.writeUInt32LE(body.length);
-    p.stdin.write(Buffer.concat([head, body]));
-    p.stdin.end();
+/** A fake fetch() that serves `body` (in chunks) with the given status and headers. */
+function fakeFetch({ status = 200, body = new Uint8Array(0), headers = {}, chunk = 1 << 20 } = {}) {
+  return async () => ({
+    status, ok: status >= 200 && status < 300, statusText: "",
+    headers: new Headers(headers),
+    body: new ReadableStream({
+      start(c) { for (let i = 0; i < body.length; i += chunk) c.enqueue(body.subarray(i, i + chunk)); c.close(); },
+    }),
   });
 }
 
-test("button helper rejects anything but a 32-letter extension ID", async () => {
-  for (const bad of [
-    { action: "add", id: "../../etc/passwd" },
-    { action: "add", id: "/Users/me/evil.crx" },
-    { action: "add", id: "ABCDEFGHIJKLMNOPABCDEFGHIJKLMNOP" },
-    { action: "add", id: "abcdefghijklmnopabcdefghijklmnopq" },
-    { action: "run", id: "abcdefghijklmnopabcdefghijklmnop" },
-    { action: "add", id: ["abcdefghijklmnopabcdefghijklmnop"] },
-  ]) {
-    const r = await askHelper(bad);
-    assert.equal(r.ok, false, JSON.stringify(bad));
-    assert.match(r.error, /Invalid request/);
-  }
+test("downloads refuse oversized packages, even without a Content-Length", async () => {
+  const id = "a".repeat(32);
+  await assert.rejects(downloadCrx(id, { fetch: fakeFetch({ headers: { "content-length": String(MAX_CRX_BYTES + 1) } }) }), /over 300 MB/);
+  const big = new Uint8Array(MAX_CRX_BYTES + 1);
+  await assert.rejects(downloadCrx(id, { fetch: fakeFetch({ body: big, chunk: 16 << 20 }) }), /over 300 MB/);
 });
 
-test("button helper survives malformed input", async () => {
-  const r = await askHelper(null, Buffer.from("{not json"));
-  assert.equal(r.ok, false);
+test("downloads explain missing extensions and reject non-IDs", async () => {
+  await assert.rejects(downloadCrx("a".repeat(32), { fetch: fakeFetch({ status: 204 }) }), /no downloadable extension/);
+  let called = false;
+  const spy = async () => { called = true; };
+  for (const bad of ["../../x", "A".repeat(32), "a".repeat(33), ["a".repeat(32)]]) {
+    await assert.rejects(downloadCrx(bad, { fetch: spy }), /Not a Chrome extension ID/);
+  }
+  assert.equal(called, false);
+  const ok = await downloadCrx("a".repeat(32), { fetch: fakeFetch({ body: new Uint8Array([1, 2, 3]) }) });
+  assert.deepEqual([...ok], [1, 2, 3]);
 });
 
 test("bridge shim only accepts the extension's allowed sites (uses Firefox's sender.url)", async () => {

@@ -1,38 +1,36 @@
 {
   "manifest_version": 3,
-  "name": "Fox Sake: Add to Zen",
-  "version": "1.0.1",
-  "description": "Adds an \"Add to Zen\" button to Chrome Web Store pages. Converts the extension with your local Fox Sake install.",
+  "name": "Fox Sake",
+  "version": "2.0.0",
+  "description": "Install Chrome Web Store extensions in Zen and other Firefox-based browsers. Converts them on your computer and patches Chrome-only APIs.",
+  "homepage_url": "https://github.com/Jprdgza/foxsake",
   "browser_specific_settings": {
     "gecko": {
       "id": "button@foxsake",
       "strict_min_version": "140.0",
       "data_collection_permissions": {
-        "required": [
-          "none"
-        ]
+        "required": ["none"]
       }
     }
   },
-  "permissions": [
-    "nativeMessaging"
+  "permissions": ["storage", "management", "alarms"],
+  "host_permissions": [
+    "https://clients2.google.com/*",
+    "https://clients2.googleusercontent.com/*"
   ],
   "background": {
-    "scripts": [
-      "background.js"
-    ]
+    "scripts": ["background.js"],
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Fox Sake",
+    "default_icon": "icons/fox.svg"
   },
   "content_scripts": [
     {
-      "matches": [
-        "https://chromewebstore.google.com/*"
-      ],
-      "js": [
-        "content.js"
-      ],
-      "css": [
-        "content.css"
-      ],
+      "matches": ["https://chromewebstore.google.com/*"],
+      "js": ["content.js"],
+      "css": ["content.css"],
       "run_at": "document_idle"
     }
   ],

@@ -1,7 +1,31 @@
 # Changelog
 
-Notable changes to Fox Sake. Versions follow [semver](https://semver.org); the
-"Add to Zen" button add-on has its own version number, noted where it changed.
+Notable changes to Fox Sake. Versions follow [semver](https://semver.org). Since 2.0.0 the add-on
+and the CLI share one version number.
+
+## 2.0.0 — 2026-11-15
+
+Fox Sake is now a browser add-on that does everything by itself: no Terminal, Node.js, or helper program.
+
+### Added
+
+- **Converter in the add-on.** Click **Add to Zen** on a Chrome Web Store page, review what was patched
+  and what can't work, then click **Install**. The same converter as the CLI; the output is byte-identical.
+- **Fox Sake page** (toolbar button): convert from a store link or ID, a `.crx`/`.zip` file, or an
+  unpacked folder; list converted extensions; update them.
+- Daily update check with a toolbar badge.
+- `npm run build:addon` builds the add-on from source; `--source` writes the archive AMO asks for.
+
+### Changed
+
+- The button says "Add to Zen" in Zen and "Add to Firefox" elsewhere.
+- Download code moved into the shared core and now rejects non-string IDs.
+
+### Removed
+
+- The native messaging helper and `foxsake button install|uninstall`. If you set up 1.0, you can delete
+  `foxsake.json` from `~/Library/Application Support/Mozilla/NativeMessagingHosts/` and
+  `~/Library/Application Support/zen/NativeMessagingHosts/`.
 
 ## 1.0.0 — 2026-11-15
 

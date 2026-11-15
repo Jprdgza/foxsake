@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fox Sake</title>
+  <link rel="icon" href="../icons/fox.svg">
+  <link rel="stylesheet" href="app.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <header>
+    <img src="../icons/fox.svg" alt="" width="32" height="32">
+    <h1>Fox Sake</h1>
+    <span class="muted" id="browser"></span>
+  </header>
+
+  <main>
+    <section id="job" class="card" hidden>
+      <h2 id="job-title">Converting…</h2>
+      <p id="job-status" class="muted"></p>
+      <progress id="job-progress" hidden></progress>
+      <div id="job-result" hidden>
+        <ul id="job-summary" class="summary"></ul>
+        <div class="actions">
+          <button id="install" class="primary">Install</button>
+          <a id="save-xpi" class="button" download>Save .xpi</a>
+          <a id="save-report" class="button" download>Save report</a>
+        </div>
+        <p id="install-hint" class="hint" hidden></p>
+        <details>
+          <summary>Full report</summary>
+          <pre id="report"></pre>
+        </details>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Add an extension</h2>
+      <form id="by-id">
+        <input id="source" type="text" placeholder="Chrome Web Store link or extension ID" autocomplete="off" spellcheck="false">
+        <button class="primary" type="submit">Convert</button>
+      </form>
+      <p class="muted">Or browse <a href="https://chromewebstore.google.com/" target="_blank" rel="noopener">the Chrome Web Store</a> and use the button on any extension's page.</p>
+      <div id="drop" class="drop">
+        <span>Drop a <code>.crx</code> or <code>.zip</code> here, or</span>
+        <label class="button">Choose file<input id="pick-file" type="file" accept=".crx,.zip" hidden></label>
+        <label class="button">Choose folder<input id="pick-folder" type="file" webkitdirectory hidden></label>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="row">
+        <h2>Converted extensions</h2>
+        <button id="check-updates">Check for updates</button>
+      </div>
+      <p id="updates-status" class="muted"></p>
+      <ul id="library" class="library"></ul>
+    </section>
+
+    <section class="card note">
+      <h2>Before your first install</h2>
+      <p>Converted extensions aren't signed by Mozilla, so the browser has to allow unsigned add-ons:
+        open <code>about:config</code>, search for <code>xpinstall.signatures.required</code> and set it to <code>false</code>.
+        Zen, Firefox Developer Edition, Nightly and ESR support this; regular Firefox doesn't.</p>
+      <p>Everything happens in your browser. Fox Sake only talks to Google's servers, to download the extension you picked
+        and to check converted extensions for updates. Converted extensions are other people's software: keep them for your own use.</p>
+      <p class="muted"><a href="https://github.com/Jprdgza/foxsake" target="_blank" rel="noopener">Source code</a> ·
+        <a href="https://github.com/Jprdgza/foxsake/blob/main/docs/design.md" target="_blank" rel="noopener">How it works</a></p>
+    </section>
+  </main>
+</body>
+</html>

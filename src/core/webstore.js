@@ -52,3 +52,42 @@ export function compareVersions(a, b) {
   }
   return 0;
 }
+
+export const MAX_CRX_BYTES = 300 * 1024 * 1024;
+
+/**
+ * Downloads an extension's CRX from Google's update service. Works with any fetch()
+ * (Node's or the browser's). Streams with a size cap; onProgress(bytesSoFar, totalOrNull).
+ */
+export async function downloadCrx(id, { chromeVersion = DEFAULT_CHROME_VERSION, fetch: doFetch = globalThis.fetch, headers, onProgress } = {}) {
+  if (typeof id !== "string" || !ID_RE.test(id)) throw new Error(`Not a Chrome extension ID: ${String(id).slice(0, 40)}`);
+  const res = await doFetch(crxDownloadUrl(id, chromeVersion), { redirect: "follow", headers });
+  if (res.status === 204 || res.status === 404) throw new Error(`The Chrome Web Store has no downloadable extension with ID ${id} (HTTP ${res.status}). It may be removed, region-locked, or paid.`);
+  if (!res.ok) throw new Error(`Download failed: HTTP ${res.status} ${res.statusText}`);
+  const len = Number(res.headers.get("content-length") || 0) || null;
+  if (len && len > MAX_CRX_BYTES) throw new Error(`Extension is ${Math.round(len / 1e6)} MB; refusing anything over 300 MB.`);
+  const reader = res.body.getReader();
+  const chunks = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.length;
+    if (total > MAX_CRX_BYTES) { reader.cancel().catch(() => {}); throw new Error("Download is over 300 MB; refusing."); }
+    chunks.push(value);
+    onProgress?.(total, len);
+  }
+  if (total === 0) throw new Error(`Empty download for ${id}: the store returned nothing.`);
+  const bytes = new Uint8Array(total);
+  let off = 0;
+  for (const c of chunks) { bytes.set(c, off); off += c.length; }
+  return bytes;
+}
+
+/** Latest version on the store (null if the store has none), without downloading the package. */
+export async function latestVersion(id, { chromeVersion = DEFAULT_CHROME_VERSION, fetch: doFetch = globalThis.fetch, headers } = {}) {
+  const res = await doFetch(updateCheckUrl(id, chromeVersion), { headers });
+  if (!res.ok) throw new Error(`Update check failed: HTTP ${res.status}`);
+  const info = parseUpdateCheck(await res.text());
+  return info && info.status === "ok" ? info.version : null;
+}

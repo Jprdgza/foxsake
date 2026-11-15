@@ -74,7 +74,7 @@ Notable details:
 - Output file names use `safeFilePart()`, because `version` comes from the package and could contain `../`.
 - Downloads are streamed with a 300 MB cap; ZIPs are capped at 20,000 entries and 512 MB (declared and actual).
 - Folder input never follows symlinks.
-- The native helper accepts only `{action: "add", id: <string of 32 a–p letters>}` and only from `button@foxsake`.
+- The add-on's background only accepts `{type: "foxsake-add", id: <string of 32 a–p letters>}` from Web Store pages, and its pages never build HTML from strings.
 - The website bridge trusts Firefox's `sender.url`, never a URL inside the message, and re-checks it
   against the extension's `externally_connectable` patterns.
 - `scripts/zen-driver.js` refuses requests that carry an `Origin` header or lack `x-foxsake-driver: 1`,
@@ -106,10 +106,25 @@ warns if anything changed.
 Pages under automation report `navigator.webdriver`, so Cloudflare-protected sites show a
 challenge page in automated test windows.
 
-## "Add to Zen" button
+## The add-on
 
-An add-on can't install other add-ons in Firefox, so the button delegates to a native
-messaging helper that runs the CLI pipeline. The helper manifest is written to both
-`~/Library/Application Support/Mozilla/NativeMessagingHosts/` (where Zen actually looks)
-and Zen's own `NativeMessagingHosts` folder. The helper opens the install prompt *before*
-replying, because Firefox may terminate a `sendNativeMessage` host as soon as it answers.
+The add-on bundles `src/core/` unchanged (`scripts/build-addon.js` only points its `fflate` import at the
+bundled copy). The flow:
+
+- The Web Store content script sends just the 32-letter ID to the background script, which checks that
+  the sender is a `chromewebstore.google.com` page and opens `app/app.html#add=<id>`.
+- The page downloads the CRX with the shared `downloadCrx()` (same 300 MB cap), then converts it in a
+  module worker so large extensions don't block the page. QuillBot (27 MB) takes about 11 s, and the result
+  is byte-identical to the CLI's.
+- **Installing:** a blob URL of type `application/x-xpinstall` opened from the background script is
+  cancelled with "missing user gesture activation". Setting `location.href` to that blob from a click on the
+  extension page works: Zen shows its "install blocked" bar ("Continue to Installation", as for any
+  non-AMO source), then the normal permissions prompt. The result is a permanent `app-profile` install
+  that survives restarts.
+- `management` lists installed `*@foxsake` add-ons and reports when an install finishes. A daily alarm
+  asks Google's update service for the latest versions and sets a badge.
+- Zen's `runtime.getBrowserInfo()` returns `name: "Firefox"` plus a `zen: {version}` field, which is how
+  the button knows to say "Add to Zen".
+- The Gecko version used for compatibility decisions comes from `rv:` in the user agent.
+
+What the CLI does that the add-on doesn't: run `web-ext lint` (Node-only) before installing.

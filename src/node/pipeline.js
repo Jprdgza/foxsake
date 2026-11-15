@@ -1,4 +1,4 @@
-// The conversion pipeline shared by the CLI and the "Add to Zen" button's native helper:
+// The CLI's conversion pipeline:
 // get the package → convert → save xpi/report/original → lint → record → (optionally) install.
 import { existsSync, lstatSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve, relative } from "node:path";
@@ -10,7 +10,7 @@ import { lintXpi, renderLint } from "./lint.js";
 import { OUT, ORIGINALS, ensureDirs, recordConversion } from "./library.js";
 import { zenGeckoVersion, installedAddons, openInZen, addonFileMtime } from "./zen.js";
 
-/** Where progress messages go (the CLI prints them; the native helper collects them). */
+/** Where progress messages go (printed by default; tests can redirect them). */
 export const output = { say: (...a) => console.log(...a) };
 const say = (...a) => output.say(...a);
 const fail = (msg) => { throw new Error(msg); };
