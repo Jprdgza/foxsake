@@ -1,0 +1,31 @@
+{
+  "name": "foxsake",
+  "version": "1.0.0",
+  "description": "Run Chrome Web Store extensions in Zen Browser and other Firefox-based browsers",
+  "main": "src/core/convert.js",
+  "scripts": {
+    "build": "node scripts/build-assets.js",
+    "pretest": "node scripts/build-assets.js",
+    "test": "node --test test/",
+    "postinstall": "node scripts/build-assets.js",
+    "fixtures": "node scripts/fetch-fixtures.js"
+  },
+  "license": "MIT",
+  "type": "module",
+  "dependencies": {
+    "@mdn/browser-compat-data": "^8.1.9",
+    "fflate": "^0.8.3",
+    "web-ext": "^10.8.0"
+  },
+  "private": true,
+  "bin": {
+    "foxsake": "bin/foxsake.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Jprdgza/foxsake.git"
+  }
+}

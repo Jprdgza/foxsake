@@ -1,0 +1,8 @@
+node_modules/
+out/
+.env
+*.log
+.DS_Store
+test/fixtures/real/
+src/core/generated/
+phase0/*.xpi

@@ -1,0 +1,18 @@
+#foxsake-add {
+  margin: 12px 0;
+  font: 14px/1.4 system-ui, sans-serif;
+}
+#foxsake-add button {
+  background: #ff7139;
+  color: #fff;
+  border: 0;
+  border-radius: 999px;
+  padding: 10px 20px;
+  font: 600 14px system-ui, sans-serif;
+  cursor: pointer;
+}
+#foxsake-add button:hover { background: #e25920; }
+#foxsake-add button:disabled { opacity: 0.6; cursor: progress; }
+#foxsake-add .foxsake-status { margin-top: 8px; max-width: 520px; color: #5f6368; }
+#foxsake-add .foxsake-status[data-kind="ok"] { color: #137333; }
+#foxsake-add .foxsake-status[data-kind="error"] { color: #c5221f; }
