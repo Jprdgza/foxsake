@@ -122,6 +122,10 @@ you can drive with `scripts/zen-driver.js` and `scripts/drv.js` (WebDriver BiDi)
 evaluate code in an add-on's background or read its console, use `scripts/rdp.js`
 (Firefox Remote Debugging Protocol).
 
+## Changes
+
+See [CHANGELOG.md](CHANGELOG.md) and the [releases page](https://github.com/Jprdgza/foxsake/releases).
+
 ## License
 
 [MIT](LICENSE). "Chrome" and "Chrome Web Store" are trademarks of Google LLC. This project
