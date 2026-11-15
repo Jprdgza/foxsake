@@ -24,8 +24,16 @@ export async function downloadCrx(id) {
   if (!res.ok) throw new Error(`Download failed: HTTP ${res.status} ${res.statusText}`);
   const len = Number(res.headers.get("content-length") || 0);
   if (len > MAX_CRX) throw new Error(`Extension is ${Math.round(len / 1e6)} MB; refusing anything over 300 MB.`);
-  const bytes = new Uint8Array(await res.arrayBuffer());
-  if (bytes.length > MAX_CRX) throw new Error("Download too large.");
+  const chunks = [];
+  let total = 0;
+  for await (const chunk of res.body) {
+    total += chunk.length;
+    if (total > MAX_CRX) throw new Error("Download is over 300 MB; refusing.");
+    chunks.push(chunk);
+  }
+  const bytes = new Uint8Array(total);
+  let off = 0;
+  for (const c of chunks) { bytes.set(c, off); off += c.length; }
   if (bytes.length === 0) throw new Error(`Empty download for ${id}: the store returned nothing.`);
   return bytes;
 }

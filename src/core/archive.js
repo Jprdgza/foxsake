@@ -9,6 +9,12 @@ export const toBytes = (text) => enc.encode(text);
 export const MAX_TOTAL_UNZIPPED = 512 * 1024 * 1024; // zip-bomb guard
 export const MAX_FILES = 20000;
 
+/** Makes an untrusted string (e.g. a manifest's version) safe to use inside a file name. */
+export function safeFilePart(s, fallback = "x") {
+  const clean = String(s ?? "").replace(/[^0-9A-Za-z._-]/g, "_").replace(/^[.]+/, "").slice(0, 64);
+  return clean || fallback;
+}
+
 /** Normalizes a ZIP entry path and rejects anything that could escape the archive root. */
 export function safePath(name) {
   let p = name.replace(/\\/g, "/").replace(/^(\.\/)+/, "");
@@ -31,6 +37,10 @@ export function readZip(zipBytes) {
       return !file.name.endsWith("/");
     },
   });
+  // Declared sizes in a ZIP can lie, so also check what was actually decompressed.
+  let actual = 0;
+  for (const data of Object.values(raw)) actual += data.length;
+  if (actual > MAX_TOTAL_UNZIPPED) throw new Error("Archive expands to more than 512 MB; refusing.");
   const files = new Map();
   for (const [name, data] of Object.entries(raw)) {
     const p = safePath(name);
@@ -51,7 +61,9 @@ export function writeZip(files) {
 
 /** Finds a file case-insensitively (Chrome on macOS/Windows tolerates case mismatches; Firefox does not). */
 export function findPath(files, wanted) {
-  const clean = safePath(wanted);
+  // Manifest paths like "/js/bg.js" mean "from the extension root" (seen in uBlock Origin Lite).
+  let clean;
+  try { clean = safePath(String(wanted).replace(/^\/+/, "")); } catch { return null; }
   if (files.has(clean)) return clean;
   const lower = clean.toLowerCase();
   for (const p of files.keys()) if (p.toLowerCase() === lower) return p;

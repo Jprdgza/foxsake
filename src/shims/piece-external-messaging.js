@@ -7,12 +7,28 @@
   const isExternal = (msg) => !!(msg && typeof msg === "object" && msg.__foxsakeExternal);
   const external = new Set();
 
+  // Chrome match pattern → RegExp (scheme://host/path with * wildcards).
+  const toRegExp = (pattern) => {
+    const m = /^(\*|https?|wss?|file|ftp):\/\/(\*|\*\.[^/*]+|[^/*]+)?(\/.*)$/.exec(pattern);
+    if (!m) return null;
+    const esc = (s) => s.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
+    const scheme = m[1] === "*" ? "https?" : esc(m[1]);
+    const host = m[2] === "*" ? "[^/]+" : m[2] && m[2].startsWith("*.") ? "(?:[^/]+\\.)?" + esc(m[2].slice(2)) : esc(m[2] || "");
+    const path = m[3].split("*").map(esc).join(".*");
+    return new RegExp("^" + scheme + "://" + host + "(?::\\d+)?" + path + "$");
+  };
+  const allowed = (FOXSAKE.externalMatches || []).map(toRegExp).filter(Boolean);
+  const isAllowedUrl = (url) => typeof url === "string" && allowed.some((re) => re.test(url));
+
   if (FOXSAKE.context === "background") {
     // Registered before any extension code runs, using the real (unwrapped) event.
     RUNTIME.onMessage.addListener((msg, sender) => {
       if (!isExternal(msg) || sender.id !== RUNTIME.id) return undefined;
-      const { message, url, origin } = msg.__foxsakeExternal;
-      const xsender = { url, origin, tab: sender.tab, frameId: sender.frameId };
+      // Use the URL Firefox reports for the sending frame, not one supplied in the message.
+      const url = sender.url;
+      if (!isAllowedUrl(url)) return Promise.resolve({ ok: false, error: "This site isn't allowed to message the extension." });
+      const { message } = msg.__foxsakeExternal;
+      const xsender = { url, origin: new URL(url).origin, tab: sender.tab, frameId: sender.frameId };
       if (sender.documentId) xsender.documentId = sender.documentId;
       return new Promise((resolve) => {
         let done = false;

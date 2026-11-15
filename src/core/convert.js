@@ -69,7 +69,8 @@ export async function convert(bytes, opts = {}) {
   if (files.has("foxsake/background-shim.js")) throw new Error("Package already contains Fox Sake shims (was it converted twice?).");
 
   const findings = scanExtension(files, { chromeId, support });
-  const rewritten = rewriteManifest(original, { files, chromeId, support });
+  const slug = slugify(shortName && !shortName.startsWith("__MSG_") && shortName.length < name.length ? shortName : name);
+  const rewritten = rewriteManifest(original, { files, chromeId, support, fallbackSlug: slug });
   const manifest = rewritten.manifest;
   const shimResult = applyShims({ files, manifest, original, findings, background: rewritten.background, chromeId });
 
@@ -80,7 +81,7 @@ export async function convert(bytes, opts = {}) {
   const classified = classifyFindings(findings, shimResult, rewritten.background);
   const meta = {
     name,
-    slug: slugify(shortName && !shortName.startsWith("__MSG_") && shortName.length < name.length ? shortName : name),
+    slug,
     version: manifest.version,
     chromeId,
     geckoId: rewritten.geckoId,

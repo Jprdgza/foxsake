@@ -24,6 +24,8 @@ function detectors(chromeId) {
     { id: "importScripts", re: /\bimportScripts\s*\(/g, what: "Service-worker importScripts() calls. Static ones are resolved into the background script list." },
     { id: "docsCanvas", re: /_docs_annotate_canvas_by_ext/g, what: "Uses the Google Docs 'annotated canvas' switch, which exposes Docs text only to allow-listed extension IDs." },
     { id: "serviceWorkerGlobals", re: /\bskipWaiting\s*\(|\bclients\s*\.\s*(?:matchAll|claim|openWindow)\b|\bregistration\s*\.\s*showNotification\b|addEventListener\(\s*["'](?:install|activate)["']/g, what: "Uses service-worker-only globals (self.registration, clients, skipWaiting, install/activate events)." },
+    { id: "portLastError", re: /\bonDisconnect\b/g, requires: "lastError", what: "Checks chrome.runtime.lastError when a messaging port disconnects. Firefox reports that error on port.error instead." },
+    { id: "storageManaged", re: /\bstorage\s*\.\s*managed\b/g, what: "Reads chrome.storage.managed (admin policy settings). Firefox throws when no policy exists; Chrome returns nothing." },
     { id: "getContexts", re: /\bgetContexts\b/g, what: "Uses chrome.runtime.getContexts (often to check for an offscreen document)." },
     { id: "manifestUpdateUrl", re: /\bupdate_url\b/g, what: "Reads 'update_url' from its manifest, often to tell 'store build' from 'developer build'." },
     { id: "chromeInternalUrls", re: /chrome:\/\/(?:extensions|settings|newtab|flags|downloads|history)\b/g, what: "Links to chrome:// pages, which don't exist in Zen (e.g. chrome://extensions → about:addons). Extensions can't open about: pages, so these links will do nothing." },
@@ -66,6 +68,7 @@ export function scanExtension(files, { chromeId, support }) {
     if (!JS_EXT.test(path) || bytes.length > MAX_SCAN_BYTES) continue;
     const text = toText(bytes);
     for (const d of dets) {
+      if (d.requires && !text.includes(d.requires)) continue; // cheap file-level precondition
       d.re.lastIndex = 0;
       for (let m; (m = d.re.exec(text)); ) addHit(findings, d.id, path, text, m.index, m[0].length, { what: d.what });
     }

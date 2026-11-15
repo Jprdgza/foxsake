@@ -16,6 +16,8 @@ const PIECES = {
   offscreen: { file: "piece-offscreen.js", contexts: ["background"], why: "Emulates chrome.offscreen with a hidden iframe in the background page (Firefox background pages already have a DOM)." },
   sidePanel: { file: "piece-sidepanel.js", contexts: ["background", "page"], why: "Maps chrome.sidePanel calls to the Firefox/Zen sidebar." },
   identity: { file: "piece-identity.js", contexts: ["background", "page"], why: "getAuthToken fails with a clear message instead of a crash; getProfileUserInfo reports 'not signed in'." },
+  storageManaged: { file: "piece-storage-managed.js", contexts: ["background", "page", "content"], why: "chrome.storage.managed returns an empty result when no admin policy exists (as in Chrome) instead of throwing." },
+  portLastError: { file: "piece-port-lasterror.js", contexts: ["background", "page", "content"], why: "Port disconnect errors appear in chrome.runtime.lastError inside onDisconnect listeners, as in Chrome (Firefox puts them on port.error)." },
   tts: { file: "piece-tts.js", contexts: ["background", "page"], why: "Implements chrome.tts with the browser's built-in speech engine." },
   declarativeContent: { file: "piece-declarative-content.js", contexts: ["background"], why: "Accepts chrome.declarativeContent rules as no-ops; the toolbar button stays enabled everywhere." },
   external: { file: "piece-external-messaging.js", contexts: ["background", "page"], why: "Delivers website messages (from the bridge) to onMessageExternal listeners with a Chrome-like sender." },
@@ -64,6 +66,8 @@ export function applyShims({ files, manifest, original, findings, background, ch
   if (has("sidePanel") || original.side_panel) need("sidePanel", "uses chrome.sidePanel / side_panel");
   if (has("getAuthToken") || has("getProfileUserInfo")) need("identity", "uses chrome.identity Chrome-only methods");
   if (has("tts") || origPerms.includes("tts")) need("tts", "uses chrome.tts");
+  if (has("portLastError")) need("portLastError", "reads runtime.lastError in onDisconnect handlers");
+  if (has("storageManaged") || original.storage?.managed_schema) need("storageManaged", "reads chrome.storage.managed (admin policy settings)");
   if (has("declarativeContent") || origPerms.includes("declarativeContent")) need("declarativeContent", "uses chrome.declarativeContent");
   const ec = original.externally_connectable;
   const ecMatches = (ec?.matches ?? []).filter((p) => typeof p === "string");
@@ -74,6 +78,7 @@ export function applyShims({ files, manifest, original, findings, background, ch
 
   const config = {
     chromeId,
+    externalMatches: ecMatches,
     manifestExtras: extras,
     swEntry: background?.entry ?? null,
     importedScripts: background?.importedScripts ?? [],

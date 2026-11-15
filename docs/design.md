@@ -45,6 +45,8 @@ rejected, and entry count and total size are capped. Fox Sake never executes dow
 - Removed: `update_url`, `key`, `minimum_chrome_version`, `oauth2`, `storage.managed_schema`,
   `use_dynamic_url`, `import`/`export`, permissions without Firefox support, and any
   top-level key BCD doesn't know.
+- Paths written with a leading slash (`"/js/background.js"`) are resolved from the package root.
+- `webRequestAuthProvider` also gets `webRequestBlocking`, which Firefox requires for blocking listeners.
 - `author` objects become strings. A remote `search_provider.favicon_url` becomes a packaged
   icon (Firefox MV3 rejects the whole package otherwise).
 
@@ -66,6 +68,32 @@ Notable details:
 - **external messaging**: the main-world script chains to any existing
   `chrome.runtime.sendMessage`, so several converted extensions can share a page. The
   background hides bridged messages from ordinary `onMessage` listeners.
+
+## Hardening
+
+- Output file names use `safeFilePart()`, because `version` comes from the package and could contain `../`.
+- Downloads are streamed with a 300 MB cap; ZIPs are capped at 20,000 entries and 512 MB (declared and actual).
+- Folder input never follows symlinks.
+- The native helper accepts only `{action: "add", id: <string of 32 a–p letters>}` and only from `button@foxsake`.
+- The website bridge trusts Firefox's `sender.url`, never a URL inside the message, and re-checks it
+  against the extension's `externally_connectable` patterns.
+- `scripts/zen-driver.js` refuses requests that carry an `Origin` header or lack `x-foxsake-driver: 1`,
+  so web pages can't use it (a custom header forces a CORS preflight, which it never answers).
+- `npm audit` reports low-severity `deepmerge` advisories inside `web-ext`'s linter; the suggested
+  "fix" downgrades web-ext seven major versions, so it's left as is.
+
+## Compatibility testing
+
+16 popular extensions (uBlock Origin Lite, Dark Reader, Grammarly, LastPass, Honey, Adobe Acrobat,
+React DevTools, Vimium, Tampermonkey, Loom, Momentum, Google Translate, Volume Master, ChatGPT search,
+QuillBot, Bitwarden) were converted and installed into a headless Zen 1.24 / Gecko 160 via WebDriver BiDi
+(`webExtension.install`). All that the store served (15) were accepted. Background startup errors were then read
+over the remote debugging protocol; that pass found the `webRequestBlocking`, `storageManaged` and
+`portLastError` issues.
+
+Known gap: bundlers that load background code with `importScripts()` at runtime (webpack's
+`importScripts` chunk loading, e.g. LastPass) can't be made synchronous in an event page. Those
+code paths fail, and the report flags them.
 
 ## Test runs
 

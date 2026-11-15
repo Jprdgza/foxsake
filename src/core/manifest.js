@@ -27,7 +27,7 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
 /**
  * @returns {{manifest: object, changes: Array<{path:string, action:string, before?:any, after?:any, reason:string}>, background: object|null, warnings: string[]}}
  */
-export function rewriteManifest(original, { files, chromeId, support }) {
+export function rewriteManifest(original, { files, chromeId, support, fallbackSlug }) {
   const m = clone(original);
   const changes = [];
   const warnings = [];
@@ -38,7 +38,9 @@ export function rewriteManifest(original, { files, chromeId, support }) {
   }
 
   // --- Firefox ID: deterministic so reinstalls/updates keep data and logins ---
-  const geckoId = `${chromeId ?? "unknown"}${GECKO_SUFFIX}`;
+  // Without a Chrome ID (local packages with no "key"), fall back to the name so two different
+  // local extensions don't share one Firefox ID and overwrite each other.
+  const geckoId = `${chromeId ?? `local-${(fallbackSlug || "extension").replace(/[^a-z0-9-]/g, "")}`}${GECKO_SUFFIX}`;
   const bss = m.browser_specific_settings ?? {};
   const before = clone(bss);
   bss.gecko = { ...(bss.gecko ?? {}), id: geckoId, strict_min_version: STRICT_MIN_VERSION };
@@ -154,6 +156,13 @@ export function rewriteManifest(original, { files, chromeId, support }) {
     }
     m[listKey] = kept;
     if (!kept.length) delete m[listKey];
+  }
+
+  // --- Chrome MV3 grants blocking auth listeners via webRequestAuthProvider; Firefox also wants
+  //     webRequestBlocking for a "blocking" listener (found via LastPass) ---
+  if (Array.isArray(m.permissions) && m.permissions.includes("webRequestAuthProvider") && !m.permissions.includes("webRequestBlocking")) {
+    m.permissions.push("webRequestBlocking");
+    log("permissions: webRequestBlocking", "added", "Firefox requires it for blocking webRequest listeners, which Chrome allows here via webRequestAuthProvider.", undefined, "webRequestBlocking");
   }
 
   // --- Top-level keys Firefox doesn't support ---

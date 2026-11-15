@@ -84,6 +84,8 @@ for the installed Zen's Gecko version, not by a hand-written list.
 | `manifest-extras` | `getManifest()` still returns removed fields such as `update_url` |
 | `identity` | `getAuthToken` fails with a clear error; `getProfileUserInfo` reports signed out |
 | `tts` | `chrome.tts` on top of the Web Speech API |
+| `storageManaged` | `storage.managed.get()` returns `{}` without a policy instead of throwing |
+| `portLastError` | Port disconnect errors show up in `runtime.lastError` inside `onDisconnect`, as in Chrome |
 | `declarativeContent` | Rules accepted as no-ops |
 | `docs-canvas` | Sets Google Docs' `_docs_annotate_canvas_by_ext` to the original ID (experimental) |
 

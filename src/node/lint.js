@@ -8,6 +8,7 @@ import { readZip } from "../core/archive.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const WEB_EXT = join(ROOT, "node_modules", ".bin", "web-ext");
+const LINT_TIMEOUT_MS = Number(process.env.FOXSAKE_LINT_TIMEOUT_MS || 180_000);
 
 /** Extracts the xpi (paths already sanitized by readZip) to a temp dir and lints it. */
 export async function lintXpi(xpiBytes) {
@@ -21,12 +22,15 @@ export async function lintXpi(xpiBytes) {
     // web-ext exits before a pipe drains (output cut at 64 KB), so write straight to a file.
     const outFile = join(dir, "..", `${dir.split("/").pop()}.json`);
     const fd = openSync(outFile, "w");
-    await new Promise((resolve) => {
+    const timedOut = await new Promise((resolve) => {
       const child = spawn(WEB_EXT, ["lint", "--source-dir", dir, "--output", "json", "--self-hosted", "--no-input"], { stdio: ["ignore", fd, "ignore"] });
-      child.on("exit", resolve);
-      child.on("error", resolve);
+      // Huge minified bundles can make the linter crawl; never let it hang a conversion.
+      const timer = setTimeout(() => { child.kill("SIGKILL"); resolve(true); }, LINT_TIMEOUT_MS);
+      child.on("exit", () => { clearTimeout(timer); resolve(false); });
+      child.on("error", () => { clearTimeout(timer); resolve(false); });
     });
     closeSync(fd);
+    if (timedOut) throw new Error(`web-ext lint took longer than ${LINT_TIMEOUT_MS / 60000} minutes and was stopped`);
     const stdout = readFileSync(outFile, "utf8");
     rmSync(outFile, { force: true });
     const json = JSON.parse(stdout.slice(stdout.indexOf("{")));

@@ -125,3 +125,12 @@ test("search engine icon given as a web URL is replaced with a packaged icon", (
   }, { files: new Map(), chromeId: ID, support });
   assert.equal(manifest.chrome_settings_overrides.search_provider.favicon_url, "i16.png");
 });
+
+test("webRequestAuthProvider also gets webRequestBlocking; managed storage gets a shim", async () => {
+  const r = await convert(makeZip({
+    "manifest.json": JSON.stringify({ manifest_version: 3, name: "x", version: "1", permissions: ["webRequest", "webRequestAuthProvider"], storage: { managed_schema: "s.json" }, background: { service_worker: "sw.js" } }),
+    "sw.js": "chrome.storage.managed.get(null);",
+  }), { targetVersion: "160.0" });
+  assert.ok(r.manifest.permissions.includes("webRequestBlocking"));
+  assert.ok(r.meta.shims.includes("storageManaged"));
+});

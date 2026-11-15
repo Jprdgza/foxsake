@@ -2,7 +2,7 @@
 // Developer tool: drives a `foxsake run` test window over WebDriver BiDi (Firefox's standard
 // automation protocol). Holds one BiDi session, records every console message / JS error to
 // out/logs/bidi-<time>.jsonl, and accepts commands on http://127.0.0.1:9333 :
-//   curl -s localhost:9333 -d '{"method":"browsingContext.getTree","params":{}}'
+//   curl -s localhost:9333 -H 'x-foxsake-driver: 1' -d '{"method":"browsingContext.getTree","params":{}}'
 // Only listens on localhost.
 import { createServer } from "node:http";
 import { createWriteStream, mkdirSync } from "node:fs";
@@ -45,6 +45,12 @@ if (s.error) { console.error("session.new failed:", s.message); process.exit(1);
 await send("session.subscribe", { events: ["log.entryAdded", "browsingContext.load"] });
 
 createServer((req, res) => {
+  // Browsers attach Origin to cross-site requests and can't add custom headers without a CORS
+  // preflight (which this server never approves), so web pages can't drive the test browser.
+  if (req.headers.origin || req.headers["x-foxsake-driver"] !== "1" || req.method !== "POST") {
+    res.statusCode = 403;
+    return res.end();
+  }
   let body = "";
   req.on("data", (d) => (body += d));
   req.on("end", async () => {

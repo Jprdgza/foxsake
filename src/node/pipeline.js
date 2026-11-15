@@ -1,10 +1,10 @@
 // The conversion pipeline shared by the CLI and the "Add to Zen" button's native helper:
 // get the package → convert → save xpi/report/original → lint → record → (optionally) install.
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve, relative } from "node:path";
 import { convert } from "../core/convert.js";
 import { parseExtensionId } from "../core/webstore.js";
-import { writeZip, safePath } from "../core/archive.js";
+import { writeZip, safePath, safeFilePart } from "../core/archive.js";
 import { downloadCrx, readLocal } from "./fetch-crx.js";
 import { lintXpi, renderLint } from "./lint.js";
 import { OUT, ORIGINALS, ensureDirs, recordConversion } from "./library.js";
@@ -37,7 +37,9 @@ function zipFolder(dir) {
   const walk = (d) => {
     for (const name of readdirSync(d)) {
       const full = join(d, name);
-      if (statSync(full).isDirectory()) walk(full);
+      const st = lstatSync(full);
+      if (st.isSymbolicLink()) continue; // never follow links out of the folder
+      if (st.isDirectory()) walk(full);
       else files.set(safePath(relative(dir, full)), new Uint8Array(readFileSync(full)));
     }
   };
@@ -53,9 +55,10 @@ export async function doConvert(input, opts = {}) {
   say("⚙ Converting…");
   const result = await convert(pkg.bytes, { chromeId: pkg.chromeId, targetVersion: gecko ?? undefined, source: pkg.source });
   const { meta } = result;
-  if (pkg.downloaded) writeFileSync(join(ORIGINALS, `${meta.chromeId}-${meta.version}.crx`), pkg.bytes);
+  if (pkg.downloaded) writeFileSync(join(ORIGINALS, `${safeFilePart(meta.chromeId)}-${safeFilePart(meta.version)}.crx`), pkg.bytes);
 
-  const xpiPath = join(OUT, `${meta.slug}-${meta.version}.xpi`);
+  // The version comes from the (untrusted) package, so it's sanitized before going into a path.
+  const xpiPath = join(OUT, `${safeFilePart(meta.slug)}-${safeFilePart(meta.version)}.xpi`);
   writeFileSync(xpiPath, result.xpi);
   let report = result.report;
   if (!opts["no-lint"]) {
@@ -63,10 +66,13 @@ export async function doConvert(input, opts = {}) {
     const lint = await lintXpi(result.xpi);
     report += "\n" + renderLint(lint);
     // Errors in manifest.json make Firefox reject the add-on as "corrupt", so they block installing.
-    const blocking = lint.errors.filter((e) => !e.file || e.file === "manifest.json").map((e) => `${e.code}: ${e.message}`);
+    // Exception: name/short_name length limits only apply on addons.mozilla.org (verified: Zen
+    // installs Grammarly, whose name is longer than 45 characters).
+    const amoOnly = (e) => /^\/(name|short_name)$/.test(e.instancePath ?? "") || /"\/(name|short_name)" must NOT have more than/.test(e.message ?? "");
+    const blocking = lint.errors.filter((e) => (!e.file || e.file === "manifest.json") && !amoOnly(e)).map((e) => `${e.code}: ${e.message}`);
     meta.lint = { errors: lint.errors.length, warnings: lint.warnings.length, blocking };
   }
-  const reportPath = join(OUT, `${meta.slug}.report.md`);
+  const reportPath = join(OUT, `${safeFilePart(meta.slug)}.report.md`);
   writeFileSync(reportPath, report);
   recordConversion(meta, { xpiPath, reportPath, source: pkg.source, sourceKind: pkg.downloaded ? "webstore" : "file" });
 

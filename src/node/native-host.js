@@ -16,7 +16,9 @@ function readMessage() {
       if (buf.length >= 4) {
         const len = buf.readUInt32LE(0);
         if (len > 64 * 1024) return reject(new Error("message too large"));
-        if (buf.length >= 4 + len) resolve(JSON.parse(buf.subarray(4, 4 + len).toString("utf8")));
+        if (buf.length >= 4 + len) {
+          try { resolve(JSON.parse(buf.subarray(4, 4 + len).toString("utf8"))); } catch { reject(new Error("Invalid request.")); }
+        }
       }
     });
     process.stdin.on("end", () => reject(new Error("no message")));
@@ -32,7 +34,7 @@ function send(obj) {
 
 try {
   const msg = await readMessage();
-  if (!msg || msg.action !== "add" || !/^[a-p]{32}$/.test(String(msg.id))) throw new Error("Invalid request.");
+  if (!msg || msg.action !== "add" || typeof msg.id !== "string" || !/^[a-p]{32}$/.test(msg.id)) throw new Error("Invalid request.");
   const { xpiPath, meta } = await doConvert(msg.id, {});
   assertInstallable(meta);
   // Open Zen's install prompt first: Firefox may end this helper as soon as it replies.

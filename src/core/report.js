@@ -14,7 +14,7 @@ const TITLES = {
   chromeExtensionUrl: "Hardcoded chrome-extension:// URLs", userAgent: "User-agent checks", tts: "chrome.tts",
   declarativeContent: "chrome.declarativeContent", importScripts: "importScripts()", docsCanvas: "Google Docs canvas access",
   serviceWorkerGlobals: "Service-worker globals", getContexts: "chrome.runtime.getContexts", manifestUpdateUrl: "Reads manifest update_url",
-  chromeInternalUrls: "chrome:// page links", hardcodedId: "Hardcoded Chrome extension ID",
+  chromeInternalUrls: "chrome:// page links", hardcodedId: "Hardcoded Chrome extension ID", storageManaged: "chrome.storage.managed", portLastError: "lastError on port disconnect",
 };
 
 /** Decides, for each finding, whether it was fixed, can't be fixed, or is just informational. */
@@ -41,6 +41,8 @@ export function classifyFindings(findings, shimResult, background) {
       case "docsCanvas": status = applied.has("docs-canvas") ? "experiment" : "info"; break;
       case "serviceWorkerGlobals": status = applied.has("sw-globals") ? "shimmed" : "info"; break;
       case "getContexts": status = applied.has("offscreen") ? "shimmed" : "info"; if (!applied.has("offscreen")) note = "Firefox supports getContexts, but not every Chrome context type."; break;
+      case "portLastError": status = applied.has("portLastError") ? "shimmed" : "info"; break;
+      case "storageManaged": status = applied.has("storageManaged") ? "shimmed" : "info"; break;
       case "manifestUpdateUrl": status = applied.has("manifest-extras") ? "shimmed" : "info"; break;
       case "chromeInternalUrls": status = "info"; break;
       default:

@@ -4,7 +4,7 @@ const HOST = "foxsake";
 const ID_RE = /^[a-p]{32}$/;
 
 browser.runtime.onMessage.addListener((msg, sender) => {
-  if (!msg || msg.type !== "foxsake-add" || !ID_RE.test(msg.id)) return undefined;
+  if (!msg || msg.type !== "foxsake-add" || typeof msg.id !== "string" || !ID_RE.test(msg.id)) return undefined;
   if (!sender.url || !sender.url.startsWith("https://chromewebstore.google.com/")) return undefined;
   return browser.runtime.sendNativeMessage(HOST, { action: "add", id: msg.id }).catch((e) => ({
     ok: false,

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Fox Sake: Add to Zen",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Adds an \"Add to Zen\" button to Chrome Web Store pages. Converts the extension with your local Fox Sake install.",
   "browser_specific_settings": {
     "gecko": {

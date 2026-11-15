@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const call = async (method, params = {}) => {
-  const r = await fetch("http://127.0.0.1:9333", { method: "POST", body: JSON.stringify({ method, params }) });
+  const r = await fetch("http://127.0.0.1:9333", { method: "POST", headers: { "x-foxsake-driver": "1" }, body: JSON.stringify({ method, params }) });
   const j = await r.json();
   if (j.type === "error") throw new Error(`${j.error}: ${j.message}`);
   return j.result;
