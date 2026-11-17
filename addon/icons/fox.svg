@@ -3,4 +3,8 @@
   <path fill="#C2451E" d="M13 14 L22 21.5 L13 26 Z M51 14 L42 21.5 L51 26 Z"/>
   <path fill="#FFF" d="M12 33 L25 38 L32 52 Z M52 33 L39 38 L32 52 Z"/>
   <path fill="#2B2A33" d="M28.5 51 H35.5 L32 55.5 Z"/>
+  <circle fill="#2B2A33" cx="23" cy="30" r="2.8"/>
+  <circle fill="#2B2A33" cx="41" cy="30" r="2.8"/>
+  <circle fill="#FFF" cx="24" cy="29" r="0.9"/>
+  <circle fill="#FFF" cx="42" cy="29" r="0.9"/>
 </svg>

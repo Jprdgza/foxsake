@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Fox Sake",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "Install Chrome Web Store extensions in Zen and other Firefox-based browsers. Converts them on your computer and patches Chrome-only APIs.",
   "homepage_url": "https://github.com/Jprdgza/foxsake",
   "browser_specific_settings": {

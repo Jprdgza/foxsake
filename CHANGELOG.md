@@ -3,6 +3,12 @@
 Notable changes to Fox Sake. Versions follow [semver](https://semver.org). Since 2.0.0 the add-on
 and the CLI share one version number.
 
+## 2.0.2 — 2026-11-16
+
+### Changed
+
+- The fox icon has eyes now.
+
 ## 2.0.1 — 2026-11-16
 
 ### Fixed
