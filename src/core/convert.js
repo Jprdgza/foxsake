@@ -8,7 +8,7 @@ import { applyShims } from "./shims.js";
 import { createSupport, DEFAULT_TARGET } from "./support.js";
 import { classifyFindings, renderReport } from "./report.js";
 
-export const FOXSAKE_VERSION = "2.0.0";
+export const FOXSAKE_VERSION = "2.0.1";
 
 /** Opens a package and returns {files, manifest, chromeId, format} without changing anything. */
 export async function openPackage(bytes, { chromeId: givenId } = {}) {

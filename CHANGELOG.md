@@ -3,6 +3,20 @@
 Notable changes to Fox Sake. Versions follow [semver](https://semver.org). Since 2.0.0 the add-on
 and the CLI share one version number.
 
+## 2.0.1 — 2026-11-16
+
+### Fixed
+
+- The **Add to Zen** button now appears when you move between extensions inside the store. Before, you
+  had to refresh: the store keeps earlier pages in the page, hidden, and the button attached itself to one of them.
+- "Couldn't reach the Chrome Web Store" when Firefox hadn't granted access to Google's download servers.
+  That happens after updating from 1.0, or if the access is turned off in the add-on's settings. Fox Sake
+  now notices and shows an **Allow access** button, then carries on with the download.
+
+### Changed
+
+- A simpler fox icon. `docs/icon-128.png` is the PNG version for store listings.
+
 ## 2.0.0 — 2026-11-15
 
 Fox Sake is now a browser add-on that does everything by itself: no Terminal, Node.js, or helper program.

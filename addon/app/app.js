@@ -21,6 +21,11 @@ const geckoVersion = (() => {
   return m ? `${m[1]}${m[2] ?? ".0"}` : undefined;
 })();
 const MAX_FOLDER_BYTES = 512 * 1024 * 1024;
+// Google's update servers. Firefox can leave these ungranted (e.g. after updating from a version
+// that didn't need them), and permissions.request() only works directly inside a click handler.
+const DOWNLOAD_ACCESS = { origins: ["https://clients2.google.com/*", "https://clients2.googleusercontent.com/*"] };
+const askForAccess = () => browser.permissions.request(DOWNLOAD_ACCESS).catch(() => false);
+let pendingStoreJob = null; // a store download waiting for the user to allow access
 const MAX_REPORT_CHARS = 200_000;
 
 let browserName = "Firefox";
@@ -64,8 +69,8 @@ async function run(title, getPackage) {
     await showResult(result);
   } catch (e) {
     setProgress(false);
-    $("job-title").textContent = "Couldn't convert";
-    setStatus(friendlyError(e), "error");
+    $("job-title").textContent = e instanceof NeedsAccess ? "One more step" : "Couldn't convert";
+    setStatus(friendlyError(e), e instanceof NeedsAccess ? "" : "error");
   } finally {
     busy = false;
   }
@@ -87,7 +92,19 @@ function convertInWorker(job) {
   });
 }
 
+class NeedsAccess extends Error {}
+
+async function checkAccess() {
+  const ok = await browser.permissions.contains(DOWNLOAD_ACCESS);
+  $("access").hidden = ok;
+  return ok;
+}
+
 const fromStore = (chromeId) => async () => {
+  if (!(await checkAccess())) {
+    pendingStoreJob = chromeId;
+    throw new NeedsAccess("Fox Sake needs access to Google's download servers first. Click \"Allow access\" above, and it will continue.");
+  }
   setStatus("Downloading from the Chrome Web Store…");
   const bytes = await downloadCrx(chromeId, {
     onProgress: (n, total) => {
@@ -183,8 +200,19 @@ function refreshLibrarySoon() {
 
 // --- inputs -----------------------------------------------------------------------------------
 
-$("by-id").addEventListener("submit", (ev) => {
+$("allow").addEventListener("click", async () => {
+  const granted = await askForAccess(); // first thing in the click, as Firefox requires
+  await checkAccess();
+  if (granted && pendingStoreJob) {
+    const id = pendingStoreJob;
+    pendingStoreJob = null;
+    run("Converting…", fromStore(id));
+  }
+});
+
+$("by-id").addEventListener("submit", async (ev) => {
   ev.preventDefault();
+  const access = askForAccess(); // must start inside the click; resolves at once if already granted
   const id = parseExtensionId($("source").value);
   if (!id) {
     startJob("Couldn't convert");
@@ -192,6 +220,7 @@ $("by-id").addEventListener("submit", (ev) => {
     setStatus("That isn't a Chrome Web Store link or a 32-letter extension ID.", "error");
     return;
   }
+  await access;
   run("Converting…", fromStore(id));
 });
 
@@ -236,7 +265,10 @@ async function renderLibrary() {
     const latest = versions[a.id];
     if (latest && a.chromeId) {
       const b = el("button", { className: "primary", textContent: `Update to ${latest}` });
-      b.addEventListener("click", () => run(`Updating ${a.name}…`, fromStore(a.chromeId)));
+      b.addEventListener("click", async () => {
+        await askForAccess();
+        run(`Updating ${a.name}…`, fromStore(a.chromeId));
+      });
       li.append(b);
     }
     ul.append(li);
@@ -247,6 +279,8 @@ async function renderLibrary() {
 }
 
 $("check-updates").addEventListener("click", async () => {
+  await askForAccess();
+  checkAccess();
   const b = $("check-updates");
   b.disabled = true;
   $("updates-status").textContent = "Checking…";
@@ -271,6 +305,7 @@ browser.runtime.getBrowserInfo().then((i) => {
 }).catch(() => {});
 
 renderLibrary();
+checkAccess();
 
 const wanted = /^#add=([a-p]{32})$/.exec(location.hash);
 if (wanted) {

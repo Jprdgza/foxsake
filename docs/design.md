@@ -123,6 +123,11 @@ bundled copy). The flow:
   that survives restarts.
 - `management` lists installed `*@foxsake` add-ons and reports when an install finishes. A daily alarm
   asks Google's update service for the latest versions and sets a badge.
+- The store is a single-page app that keeps earlier pages in the DOM, hidden. The content script only
+  anchors the button next to visible elements and re-places it when its spot gets hidden.
+- Host access to Google's servers can be missing even though it's in `host_permissions` (it wasn't granted
+  when updating from 1.0, and users can switch it off). The page checks `permissions.contains()` and asks
+  with `permissions.request()` from a click, since Firefox only allows that inside a user action.
 - Zen's `runtime.getBrowserInfo()` returns `name: "Firefox"` plus a `zen: {version}` field, which is how
   the button knows to say "Add to Zen".
 - The Gecko version used for compatibility decisions comes from `rv:` in the user agent.

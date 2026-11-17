@@ -43,5 +43,7 @@ pre { max-height: 420px; overflow: auto; padding: 12px; background: var(--bg); b
 .library .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .library .ver { color: var(--muted); font-variant-numeric: tabular-nums; }
 .note p { margin: 8px 0; }
+.warn-card { border-color: var(--accent); }
+.warn-card p { margin: 0 0 12px; }
 code { font-size: 13px; }
 @media (max-width: 520px) { form { flex-direction: column; } }
