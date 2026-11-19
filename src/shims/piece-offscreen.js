@@ -13,7 +13,14 @@
     Reason: Object.fromEntries(REASONS.map((r) => [r, r])),
     createDocument: cbify(async (params = {}) => {
       if (frame || creating) throw new Error("Only a single offscreen document may be created.");
-      const url = new URL(params.url, RUNTIME.getURL("/")).href;
+      // Like Chrome, only a page packaged with the extension (a relative path or this extension's URL).
+      const root = new URL(RUNTIME.getURL("/"));
+      let parsed = null;
+      try { parsed = typeof params.url === "string" ? new URL(params.url, root) : null; } catch (e) { /* invalid */ }
+      if (!parsed || parsed.protocol !== root.protocol || parsed.host !== root.host) {
+        throw new Error("Invalid offscreen document URL: it must be a page inside the extension (" + String(params.url) + ").");
+      }
+      const url = parsed.href;
       creating = new Promise((resolve, reject) => {
         const f = document.createElement("iframe");
         f.src = url;

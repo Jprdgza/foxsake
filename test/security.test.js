@@ -146,3 +146,34 @@ test("externally_connectable patterns Chrome rejects don't open the bridge to ev
   const m2 = JSON.parse(toText(readZip(none.xpi).get("manifest.json")));
   assert.ok(!(m2.content_scripts ?? []).some((c) => c.js.some((j) => j.startsWith("foxsake/external-"))), "no bridge at all");
 });
+
+test("offscreen documents must be pages inside the extension (FS-4)", async () => {
+  const { runInNewContext } = await import("node:vm");
+  const r = await convert(makeZip({
+    "manifest.json": JSON.stringify({ manifest_version: 3, name: "x", version: "1", permissions: ["offscreen"], background: { service_worker: "sw.js" } }),
+    "sw.js": "", "off.html": "<html></html>",
+  }), { targetVersion: "140.0" });
+  const shim = toText(readZip(r.xpi).get("foxsake/background-shim.js"));
+  const ROOT = "moz-extension://0d7c1b2a-uuid/";
+  const loaded = [];
+  const fakeDoc = {
+    body: { appendChild: (f) => { loaded.push(f.src); f.fire("load"); } },
+    createElement: () => {
+      const handlers = {};
+      return { style: {}, setAttribute() {}, remove() {}, addEventListener: (t, fn) => { handlers[t] = fn; }, fire: (t) => handlers[t]?.() };
+    },
+  };
+  const chrome = { runtime: { id: "x@foxsake", getURL: (p) => new URL(p, ROOT).href, onMessage: { addListener() {} } } };
+  const ctx = { chrome, document: fakeDoc, URL, console, Promise, Error, Object, Array, String, Set, Map, WeakMap, setTimeout };
+  ctx.globalThis = ctx;
+  runInNewContext(shim, ctx);
+  const off = ctx.chrome.offscreen;
+  for (const bad of ["https://evil.example/page.html", "//evil.example/x.html", "moz-extension://other-uuid/off.html", "data:text/html,hi", "javascript:alert(1)"]) {
+    await assert.rejects(off.createDocument({ url: bad, reasons: ["DOM_PARSER"], justification: "t" }), /Invalid offscreen document URL/, bad);
+  }
+  assert.equal(loaded.length, 0);
+  await off.createDocument({ url: "off.html", reasons: ["DOM_PARSER"], justification: "t" });
+  assert.deepEqual(loaded, [`${ROOT}off.html`]);
+  await off.closeDocument();
+  await off.createDocument({ url: `${ROOT}off.html`, reasons: ["DOM_PARSER"], justification: "t" });
+});

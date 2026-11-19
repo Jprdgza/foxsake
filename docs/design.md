@@ -84,7 +84,8 @@ Notable details:
 - **offscreen**: the iframe lives in the background page. `runtime.getContexts` and
   `clients.matchAll` both report it, since extensions use either to check whether it exists.
   Firefox suspends idle event pages, and the iframe goes with it, which matches Chrome
-  closing offscreen documents.
+  closing offscreen documents. As in Chrome, `createDocument` only accepts a page inside the
+  extension; other URLs are refused.
 - **sidePanel**: `sidebarAction.open()`/`toggle()` must run synchronously inside a user
   gesture, so those wrappers deliberately avoid `await`.
 - **external messaging**: the main-world script chains to any existing
