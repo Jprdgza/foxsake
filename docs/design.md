@@ -147,7 +147,8 @@ bundled copy). The flow:
   extension page works: Zen shows its "install blocked" bar ("Continue to Installation", as for any
   non-AMO source), then the normal permissions prompt. The result is a permanent `app-profile` install
   that survives restarts.
-- `management` lists installed `*@foxsake` add-ons and reports when an install finishes. A daily alarm
+- `management` lists installed add-ons and reports when an install finishes. The page only shows the ones
+  this Fox Sake converted (IDs kept in `storage.local.reports`), not every `*@foxsake` ID. A daily alarm
   asks Google's update service for the latest versions and sets a badge.
 - The store is a single-page app that keeps earlier pages in the DOM, hidden. The content script only
   anchors the button next to visible elements and re-places it when its spot gets hidden.

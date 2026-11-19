@@ -1,14 +1,17 @@
-// Converted extensions installed in this browser (any add-on whose ID ends in @foxsake),
-// and update checks against the Chrome Web Store.
+// Converted extensions installed in this browser, and update checks against the Chrome Web Store.
+// Only add-ons this Fox Sake converted count: their IDs are the keys of storage.local "reports",
+// written when a conversion finishes. Anything else that happens to use an @foxsake ID (a sideloaded
+// add-on, or one converted with the command-line version) isn't listed or offered updates.
 import { latestVersion, compareVersions } from "../lib/core/webstore.js";
 
 const OWN_ID = "button@foxsake";
 const CHROME_ID = /^([a-p]{32})@foxsake$/;
 
 export async function convertedAddons() {
-  const all = await browser.management.getAll();
+  const [all, { reports = {} }] = await Promise.all([browser.management.getAll(), browser.storage.local.get("reports")]);
+  const ours = new Set(Object.keys(reports));
   return all
-    .filter((a) => a.type === "extension" && a.id.endsWith("@foxsake") && a.id !== OWN_ID)
+    .filter((a) => a.type === "extension" && ours.has(a.id) && a.id !== OWN_ID)
     .map((a) => ({ id: a.id, name: a.name, version: a.version, enabled: a.enabled, chromeId: CHROME_ID.exec(a.id)?.[1] ?? null }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }

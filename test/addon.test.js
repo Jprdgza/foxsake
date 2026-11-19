@@ -41,3 +41,28 @@ test("add-on pages never build HTML from strings", () => {
     assert.doesNotMatch(src, /innerHTML|outerHTML|insertAdjacentHTML|document\.write|\beval\(|new Function/, f);
   }
 });
+
+test("the library only lists add-ons this Fox Sake converted (FS-5)", async () => {
+  execFileSync(process.execPath, [join(ROOT, "scripts", "build-addon.js")], { stdio: "pipe" });
+  const ours = "abcdefghijklmnopabcdefghijklmnop@foxsake";
+  const local = "local-0123456789abcdef@foxsake";
+  const sideloaded = "ponmlkjihgfedcbaponmlkjihgfedcba@foxsake";
+  globalThis.browser = {
+    management: { getAll: async () => [
+      { id: ours, type: "extension", name: "Ours", version: "1", enabled: true },
+      { id: local, type: "extension", name: "Local", version: "1", enabled: true },
+      { id: sideloaded, type: "extension", name: "Sideloaded", version: "1", enabled: true },
+      { id: "button@foxsake", type: "extension", name: "Fox Sake", version: "2", enabled: true },
+    ] },
+    storage: { local: { get: async () => ({ reports: { [ours]: {}, [local]: {}, "gone@foxsake": {} } }) } },
+  };
+  try {
+    const { convertedAddons } = await import(join(ROOT, "out", "addon", "app", "library.js"));
+    const list = await convertedAddons();
+    assert.deepEqual(list.map((a) => a.id), [local, ours]);
+    assert.equal(list.find((a) => a.id === ours).chromeId, "abcdefghijklmnopabcdefghijklmnop");
+    assert.equal(list.find((a) => a.id === local).chromeId, null);
+  } finally {
+    delete globalThis.browser;
+  }
+});
