@@ -125,3 +125,24 @@ test("bridge shim only accepts the extension's allowed sites (uses Firefox's sen
   assert.match(bg, /"externalMatches":\["https:\/\/\*\.example\.com\/\*"\]/);
   assert.match(bg, /const url = sender\.url;/);
 });
+
+test("externally_connectable patterns Chrome rejects don't open the bridge to every site (FS-3)", async () => {
+  const mk = (matches) => makeZip({
+    "manifest.json": JSON.stringify({ manifest_version: 3, name: "x", version: "1", background: { service_worker: "sw.js" }, externally_connectable: { matches } }),
+    "sw.js": "chrome.runtime.onMessageExternal.addListener(() => {});",
+  });
+  const broad = ["*://*/*", "<all_urls>", "https://*.com/*", "https://*.co.uk/*", "https://*.github.io/*", "https://*/*"];
+  const r = await convert(mk([...broad, "https://app.example.com/*", "https://*.example.com/*"]), { targetVersion: "140.0" });
+  const files = readZip(r.xpi);
+  const m = JSON.parse(toText(files.get("manifest.json")));
+  const bridge = m.content_scripts.filter((c) => c.js.some((j) => j.startsWith("foxsake/external-")));
+  assert.equal(bridge.length, 2);
+  for (const c of bridge) assert.deepEqual(c.matches, ["https://app.example.com/*", "https://*.example.com/*"]);
+  assert.match(toText(files.get("foxsake/background-shim.js")), /"externalMatches":\["https:\/\/app\.example\.com\/\*","https:\/\/\*\.example\.com\/\*"\]/);
+  for (const p of broad) assert.ok(r.report.includes(p), `report lists ${p}`);
+  assert.match(r.report, /Ignored externally_connectable\.matches/);
+
+  const none = await convert(mk(broad), { targetVersion: "140.0" });
+  const m2 = JSON.parse(toText(readZip(none.xpi).get("manifest.json")));
+  assert.ok(!(m2.content_scripts ?? []).some((c) => c.js.some((j) => j.startsWith("foxsake/external-"))), "no bridge at all");
+});

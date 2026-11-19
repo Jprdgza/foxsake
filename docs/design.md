@@ -89,7 +89,10 @@ Notable details:
   gesture, so those wrappers deliberately avoid `await`.
 - **external messaging**: the main-world script chains to any existing
   `chrome.runtime.sendMessage`, so several converted extensions can share a page. The
-  background hides bridged messages from ordinary `onMessage` listeners.
+  background hides bridged messages from ordinary `onMessage` listeners. Patterns Chrome
+  refuses (`<all_urls>`, a `*` host, or `*.` followed by a public suffix such as `com`, `co.uk` or
+  `github.io`) are dropped and listed in the report. The suffix check is a short built-in list,
+  not the full Public Suffix List.
 
 ## Hardening
 

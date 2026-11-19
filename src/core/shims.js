@@ -41,6 +41,33 @@ ${body}
 
 const withConfig = (file, config) => SHIM_SOURCES[file].replace("/*FOXSAKE_CONFIG*/{}", JSON.stringify(config));
 
+// Chrome ignores externally_connectable.matches entries that cover all sites or a whole public
+// suffix ("*://*/*", "*://*.com/*", "*://*.co.uk/*", "*://*.github.io/*"). Fox Sake does the same so a
+// pattern Chrome never honoured doesn't open the extension to every website after conversion.
+// Not the full Public Suffix List: single-label suffixes, the usual ccTLD second levels, and
+// shared hosting domains where anyone can get a subdomain.
+const SECOND_LEVEL = new Set(["co", "com", "net", "org", "gov", "edu", "ac", "or", "ne", "go", "gob", "gouv", "nic", "mil", "ltd", "plc", "sch", "nom", "info", "biz"]);
+const SHARED_HOSTS = new Set([
+  "github.io", "gitlab.io", "blogspot.com", "appspot.com", "herokuapp.com", "netlify.app", "vercel.app",
+  "pages.dev", "workers.dev", "web.app", "firebaseapp.com", "azurewebsites.net", "cloudfront.net",
+  "amazonaws.com", "glitch.me", "repl.co", "replit.app", "fly.dev", "onrender.com", "ngrok.io", "ngrok-free.app",
+]);
+const isPublicSuffix = (host) => {
+  const labels = host.toLowerCase().replace(/\.$/, "").split(".");
+  if (labels.length === 1) return true;
+  if (labels.length === 2 && SECOND_LEVEL.has(labels[0]) && /^[a-z]{2}$/.test(labels[1])) return true;
+  return SHARED_HOSTS.has(labels.join("."));
+};
+export function tooBroadForExternal(pattern) {
+  if (pattern === "<all_urls>") return true;
+  const m = /^[^:/]+:\/\/([^/]*)/.exec(pattern);
+  if (!m) return false;
+  const host = m[1].replace(/:\d+$/, "");
+  if (host === "" || host === "*") return true;
+  if (host.startsWith("*.")) return isPublicSuffix(host.slice(2));
+  return false;
+}
+
 const matchesDocs = (patterns = []) =>
   patterns.some((p) => p === "<all_urls>" || /^(\*|https):\/\/(\*|\*\.google\.com|docs\.google\.com)\//.test(p));
 
@@ -70,7 +97,10 @@ export function applyShims({ files, manifest, original, findings, background, ch
   if (has("storageManaged") || original.storage?.managed_schema) need("storageManaged", "reads chrome.storage.managed (admin policy settings)");
   if (has("declarativeContent") || origPerms.includes("declarativeContent")) need("declarativeContent", "uses chrome.declarativeContent");
   const ec = original.externally_connectable;
-  const ecMatches = (ec?.matches ?? []).filter((p) => typeof p === "string");
+  const ecDeclared = (ec?.matches ?? []).filter((p) => typeof p === "string");
+  const ecMatches = ecDeclared.filter((p) => !tooBroadForExternal(p));
+  const ecDropped = ecDeclared.filter((p) => tooBroadForExternal(p));
+  if (ecDropped.length) notes.push(`Ignored externally_connectable.matches ${ecDropped.join(", ")}: Chrome doesn't allow patterns that cover all sites or a whole domain suffix, so these never worked there either.`);
   if (ecMatches.length) need("external", "manifest allows websites to message it (externally_connectable)");
   if (ec?.ids?.length) notes.push("externally_connectable.ids (messages from other extensions) works natively in Firefox, but other extensions must use this add-on's new ID (" + (chromeId ?? "?") + "@foxsake).");
 
