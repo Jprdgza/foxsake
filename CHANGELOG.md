@@ -3,6 +3,36 @@
 Notable changes to Fox Sake. Versions follow [semver](https://semver.org). Since 2.0.0 the add-on
 and the CLI share one version number.
 
+## 2.0.3 — 2026-11-18
+
+Security fixes from a review of 2.0.2.
+
+### Security
+
+- **CRX signatures are checked.** Fox Sake now verifies CRX3 signatures (RSA and ECDSA P-256) and CRX2
+  signatures (RSA) before converting. A `.crx` with a forged or broken signature is refused. Before, a
+  forged package that included a real extension's public key got that extension's ID, so installing it
+  replaced the real extension and inherited its saved data.
+- **IDs only come from verified packages.** `manifest.key` is ignored. Unsigned `.zip` files and folders get
+  `local-<hash of the package>@foxsake` instead of `local-<name>@foxsake`, so a file can't take over another
+  extension's ID by reusing its name. Store downloads must be signed by the extension that was asked for.
+- **A second click before a local file replaces an installed extension,** with a warning that the file gets
+  all of that extension's saved data.
+- `externally_connectable` patterns that Chrome rejects (`<all_urls>`, `*://*/*`, `*.com`, `*.co.uk`,
+  `*.github.io`, …) are dropped and listed in the report, instead of letting every website message the extension.
+- The offscreen shim only loads pages packaged with the extension, as Chrome does.
+- The **Converted extensions** list only shows add-ons this Fox Sake converted, not every `@foxsake` ID.
+
+### Changed
+
+- The README recommends a separate Zen profile for converted extensions: turning off signature checks also
+  turns them off for the add-ons you already have.
+- Unsigned local packages now get a new ID whenever their contents change, so a changed `.zip` or folder
+  installs as a separate add-on and starts with empty settings.
+- Extensions installed with the command-line version, or with Fox Sake before 2.0.3 without a saved report,
+  no longer appear in the add-on's list. Convert them again from the add-on (for example with **Add to Zen**
+  on their store page) to bring them back.
+
 ## 2.0.2 — 2026-11-16
 
 ### Changed
