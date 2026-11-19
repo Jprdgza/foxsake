@@ -1,6 +1,6 @@
 // The converter pipeline: CRX/ZIP bytes in → Firefox .xpi bytes + report out.
 // Pure (no file system / network), so it runs in Node or a browser.
-import { unwrapCrx, chromeIdFromPublicKey } from "./crx.js";
+import { unwrapCrx } from "./crx.js";
 import { readZip, writeZip, findPath, parseLenientJson, toBytes, toText } from "./archive.js";
 import { scanExtension } from "./scan.js";
 import { rewriteManifest, displayName, slugify } from "./manifest.js";
@@ -10,9 +10,23 @@ import { classifyFindings, renderReport } from "./report.js";
 
 export const FOXSAKE_VERSION = "2.0.2";
 
-/** Opens a package and returns {files, manifest, chromeId, format} without changing anything. */
+/**
+ * Opens a package and returns {files, manifest, chromeId, localId, format} without changing anything.
+ *
+ * The Chrome ID decides which installed add-on (and whose saved data) a conversion replaces, so it
+ * only comes from a verified signature. `givenId` is the ID the user asked the Web Store for: the
+ * download must be signed with that extension's key. Unsigned local packages have no Chrome ID; they
+ * get `localId`, derived from their bytes, so one local file can't take over another's ID.
+ * `manifest.key` is ignored: it's a public key anyone can copy.
+ */
 export async function openPackage(bytes, { chromeId: givenId } = {}) {
+  if (!(bytes instanceof Uint8Array)) bytes = new Uint8Array(bytes);
   const crx = await unwrapCrx(bytes);
+  if (givenId && crx.chromeId !== givenId) {
+    throw new Error(crx.chromeId
+      ? `The download is signed as extension ${crx.chromeId}, not ${givenId} as requested. Not converting it.`
+      : `The download for ${givenId} isn't signed by that extension. Not converting it.`);
+  }
   let files = readZip(crx.zip);
 
   // ZIPs of an unpacked folder often wrap everything in one top-level directory.
@@ -31,14 +45,15 @@ export async function openPackage(bytes, { chromeId: givenId } = {}) {
     files.delete(manifestPath);
   }
 
-  let chromeId = crx.chromeId ?? givenId ?? null;
-  if (!chromeId && typeof manifest.key === "string") {
-    try {
-      const der = Uint8Array.from(atob(manifest.key.replace(/\s+/g, "")), (c) => c.charCodeAt(0));
-      chromeId = await chromeIdFromPublicKey(der);
-    } catch {}
-  }
-  return { files, manifest, chromeId, format: crx.format };
+  const chromeId = crx.chromeId;
+  const localId = chromeId ? null : `local-${await shortHash(bytes)}`;
+  return { files, manifest, chromeId, localId, format: crx.format };
+}
+
+/** First 16 hex characters of SHA-256(bytes). */
+async function shortHash(bytes) {
+  const d = new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256", bytes));
+  return [...d.subarray(0, 8)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 /** Scan only: what would need patching. */
@@ -57,7 +72,7 @@ export async function scanPackage(bytes, opts = {}) {
  */
 export async function convert(bytes, opts = {}) {
   const support = createSupport(opts.targetVersion ?? DEFAULT_TARGET);
-  const { files, manifest: original, chromeId, format } = await openPackage(bytes, opts);
+  const { files, manifest: original, chromeId, localId, format } = await openPackage(bytes, opts);
   const name = displayName(original, files);
   const shortName = original.short_name ? displayName({ ...original, name: original.short_name }, files) : null;
   const removedFiles = [];
@@ -70,7 +85,7 @@ export async function convert(bytes, opts = {}) {
 
   const findings = scanExtension(files, { chromeId, support });
   const slug = slugify(shortName && !shortName.startsWith("__MSG_") && shortName.length < name.length ? shortName : name);
-  const rewritten = rewriteManifest(original, { files, chromeId, support, fallbackSlug: slug });
+  const rewritten = rewriteManifest(original, { files, chromeId, localId, support });
   const manifest = rewritten.manifest;
   const shimResult = applyShims({ files, manifest, original, findings, background: rewritten.background, chromeId });
 

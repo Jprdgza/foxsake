@@ -32,6 +32,10 @@ browser. There's also a command-line version that does the same thing.
   the store for new versions once a day and shows a badge when there are some.
 
 Each extension gets the Firefox ID `<chromeId>@foxsake`, so updates keep its settings, storage and logins.
+That ID only comes from a signature Fox Sake has checked: a `.crx` with a forged or broken signature is refused,
+and unsigned `.zip` files and folders get an ID based on their contents (`local-…@foxsake`), so they can't take
+over an extension you already have. If a file you picked would replace an installed extension, Fox Sake asks
+twice, because the new file gets all of that extension's saved data.
 
 **Privacy.** Fox Sake only contacts Google's update servers (`clients2.google.com` and
 `clients2.googleusercontent.com`): to download the extension you picked, and to ask for the latest version

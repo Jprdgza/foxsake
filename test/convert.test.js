@@ -5,7 +5,7 @@ import { createSupport } from "../src/core/support.js";
 import { convert } from "../src/core/convert.js";
 import { readZip, toBytes, toText } from "../src/core/archive.js";
 import { parseExtensionId } from "../src/core/webstore.js";
-import { makeZip, makeCrx3, publicKeyDer, idFromKey, realFixture } from "./helpers.js";
+import { makeZip, makeCrx3, signingKey, idFromKey, realFixture } from "./helpers.js";
 
 const support = createSupport("140.0");
 const ID = "abcdefghijklmnopabcdefghijklmnop";
@@ -68,8 +68,8 @@ test("parses Chrome Web Store URLs and bare IDs", () => {
 });
 
 test("end to end: offscreen + sidePanel + external messaging + chrome-extension URLs", async () => {
-  const der = publicKeyDer();
-  const id = idFromKey(der);
+  const key = signingKey();
+  const id = idFromKey(key.der);
   const crx = makeCrx3(makeZip({
     "manifest.json": JSON.stringify({
       manifest_version: 3, name: "Demo", version: "2.0", update_url: "x",
@@ -85,7 +85,7 @@ test("end to end: offscreen + sidePanel + external messaging + chrome-extension 
     "off.html": "<html><head></head></html>",
     "style.css": `.a{background:url(chrome-extension://__MSG_@@extension_id__/img/a.png)}`,
     "_metadata/verified_contents.json": "[]",
-  }), der);
+  }), key);
 
   const r = await convert(crx, { targetVersion: "140.0" });
   const files = readZip(r.xpi);

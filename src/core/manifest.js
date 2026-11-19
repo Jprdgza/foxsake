@@ -27,7 +27,7 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
 /**
  * @returns {{manifest: object, changes: Array<{path:string, action:string, before?:any, after?:any, reason:string}>, background: object|null, warnings: string[]}}
  */
-export function rewriteManifest(original, { files, chromeId, support, fallbackSlug }) {
+export function rewriteManifest(original, { files, chromeId, localId, support }) {
   const m = clone(original);
   const changes = [];
   const warnings = [];
@@ -38,9 +38,11 @@ export function rewriteManifest(original, { files, chromeId, support, fallbackSl
   }
 
   // --- Firefox ID: deterministic so reinstalls/updates keep data and logins ---
-  // Without a Chrome ID (local packages with no "key"), fall back to the name so two different
-  // local extensions don't share one Firefox ID and overwrite each other.
-  const geckoId = `${chromeId ?? `local-${(fallbackSlug || "extension").replace(/[^a-z0-9-]/g, "")}`}${GECKO_SUFFIX}`;
+  // Unsigned local packages have no Chrome ID; convert.js gives them local-<hash of the package>,
+  // so a different file can never reuse another add-on's ID (and its saved data).
+  const base = chromeId ?? localId;
+  if (!/^([a-p]{32}|local-[0-9a-f]{16})$/.test(base ?? "")) throw new Error("Internal error: no valid ID for the converted add-on.");
+  const geckoId = `${base}${GECKO_SUFFIX}`;
   const bss = m.browser_specific_settings ?? {};
   const before = clone(bss);
   bss.gecko = { ...(bss.gecko ?? {}), id: geckoId, strict_min_version: STRICT_MIN_VERSION };

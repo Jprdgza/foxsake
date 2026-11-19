@@ -66,7 +66,7 @@ async function run(title, getPackage) {
     setStatus("Converting…");
     setProgress(0, 0);
     const result = await convertInWorker({ ...pkg, targetVersion: geckoVersion });
-    await showResult(result);
+    await showResult(result, { fromStore: !!pkg.chromeId });
   } catch (e) {
     setProgress(false);
     $("job-title").textContent = e instanceof NeedsAccess ? "One more step" : "Couldn't convert";
@@ -129,15 +129,22 @@ const fromFolder = (fileList) => async () => {
   return { files, source: list[0]?.webkitRelativePath.split("/")[0] ?? "folder" };
 };
 
-async function showResult({ xpi, meta, report, classified }) {
+async function showResult({ xpi, meta, report, classified }, { fromStore }) {
   setProgress(false);
   $("job-title").textContent = `${meta.name} ${meta.version}`;
 
   let installed = null;
   try { installed = await browser.management.get(meta.geckoId); } catch { /* not installed */ }
-  setStatus(installed
-    ? `Version ${installed.version} is installed. Installing replaces it and keeps its settings and data.`
-    : "Converted. Nothing is installed until you click Install.");
+  // A local file that replaces an installed add-on inherits everything that add-on saved. Its
+  // signature checked out, but it didn't come from the store just now, so make that a deliberate choice.
+  const risky = !!installed && !fromStore;
+  if (risky) {
+    setStatus(`This file would replace ${installed.name} ${installed.version}, which is installed, and get all of its saved data.`, "error");
+  } else {
+    setStatus(installed
+      ? `Version ${installed.version} is installed. Installing replaces it and keeps its settings and data.`
+      : "Converted. Nothing is installed until you click Install.");
+  }
 
   const summary = $("job-summary");
   summary.replaceChildren();
@@ -154,10 +161,10 @@ async function showResult({ xpi, meta, report, classified }) {
   const installUrl = URL.createObjectURL(new Blob([xpi], { type: "application/x-xpinstall" }));
   const saveUrl = URL.createObjectURL(new Blob([xpi], { type: "application/octet-stream" }));
   const reportUrl = URL.createObjectURL(new Blob([report], { type: "text/markdown" }));
-  current = { meta, installUrl, urls: [installUrl, saveUrl, reportUrl] };
+  current = { meta, installUrl, urls: [installUrl, saveUrl, reportUrl], confirm: risky ? installed : null };
   Object.assign($("save-xpi"), { href: saveUrl, download: `${base}.xpi` });
   Object.assign($("save-report"), { href: reportUrl, download: `${base}.report.md` });
-  $("install").textContent = installed ? `Update in ${browserName}` : `Install in ${browserName}`;
+  $("install").textContent = risky ? `Replace ${installed.name}…` : installed ? `Update in ${browserName}` : `Install in ${browserName}`;
   $("install").disabled = false;
   $("report").textContent = report;
   $("job-result").hidden = false;
@@ -169,9 +176,21 @@ async function showResult({ xpi, meta, report, classified }) {
 
 $("install").addEventListener("click", () => {
   if (!current) return;
+  const hint = $("install-hint");
+  if (current.confirm) {
+    // First click on a risky replacement only explains; the second one installs.
+    const old = current.confirm;
+    current.confirm = null;
+    hint.className = "hint warn";
+    hint.textContent = `This file didn't come straight from the Chrome Web Store. Installing it replaces ${old.name} ` +
+      `and gives the new code everything ${old.name} has saved: its settings, logins, and any other stored data. ` +
+      `Only continue if you trust where this file came from. Click "Replace anyway" to continue.`;
+    hint.hidden = false;
+    $("install").textContent = "Replace anyway";
+    return;
+  }
   // Synchronous on purpose: the navigation has to happen inside the click.
   location.href = current.installUrl;
-  const hint = $("install-hint");
   hint.className = "hint";
   hint.textContent = `${browserName} will ask you twice: click "Continue to Installation", then "Add". ` +
     `If it says the add-on "could not be verified", unsigned add-ons aren't allowed yet (see the note at the bottom).`;

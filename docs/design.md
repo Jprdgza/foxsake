@@ -29,14 +29,36 @@ Everything up to "write .xpi" lives in `src/core/` and has no Node dependencies.
 
 CRX3: `"Cr24"`, uint32 version, uint32 header length, protobuf `CrxFileHeader`, then the ZIP.
 CRX2: `"Cr24"`, version, key length, signature length, key, signature, then the ZIP.
-The parser bounds-checks every offset. For CRX3, it requires `signed_header_data.crx_id`
-to equal the first 16 bytes of SHA-256 of one of the included public keys, and it requires
-the payload to start with a ZIP signature. ZIP entries with `..` or absolute paths are
-rejected, and entry count and total size are capped. Fox Sake never executes downloaded code.
+The parser bounds-checks every offset and requires the payload to start with a ZIP signature.
+ZIP entries with `..` or absolute paths are rejected, and entry count and total size are capped.
+Fox Sake never executes downloaded code.
+
+Signatures are checked with WebCrypto, so the CLI and the add-on run the same code:
+
+- CRX3 signs `"CRX3 SignedData\0"`, the uint32 LE length of `signed_header_data`, `signed_header_data`
+  and the ZIP. Proofs can be RSASSA-PKCS1-v1_5/SHA-256 (header field 2) or ECDSA P-256/SHA-256
+  (field 3, DER signatures). Every proof must verify, as in Chrome, and `crx_id` must be the
+  SHA-256 prefix of one of the keys that signed. Store downloads carry two proofs: the developer's key
+  and the Web Store's publisher key.
+- CRX2 signs the ZIP with RSA PKCS#1 v1.5/SHA-1.
+
+## Add-on IDs
+
+The Firefox ID decides which installed add-on a conversion replaces, and so whose saved data
+(`storage`, IndexedDB, granted permissions) the new code inherits. It only comes from a verified signature:
+
+- Store downloads: `<chromeId>@foxsake`, and the download has to be signed by the extension that was asked for.
+- A signed `.crx` file: `<chromeId>@foxsake` from the key whose signature verified.
+- Unsigned packages (`.zip`, folders): `local-<first 16 hex of SHA-256 of the package>@foxsake`. `manifest.key`
+  is ignored because it's a public key anyone can copy. A changed file gets a new ID, so it installs
+  alongside the old one instead of taking over its data.
+
+When a local file would replace an installed add-on, the add-on page asks for a second click and says
+that the file gets all of that extension's saved data.
 
 ## Manifest rewriting
 
-- `browser_specific_settings.gecko.id = "<chromeId>@foxsake"`, `strict_min_version = "128.0"`
+- `browser_specific_settings.gecko.id` (see "Add-on IDs"), `strict_min_version = "128.0"`
   (the first release with MAIN-world content scripts).
 - `background.service_worker` → `background.scripts`; `type: "module"` is preserved. Static
   `importScripts()` calls are followed recursively and placed ahead of the worker. Their

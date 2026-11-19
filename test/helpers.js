@@ -1,5 +1,5 @@
 // Test helpers: build synthetic CRX2/CRX3 files around a ZIP, exactly as Chrome lays them out.
-import { generateKeyPairSync, createHash } from "node:crypto";
+import { generateKeyPairSync, createHash, sign } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,9 +13,12 @@ export function makeZip(filesObj) {
   return writeZip(m);
 }
 
-export function publicKeyDer() {
-  const { publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
-  return new Uint8Array(publicKey.export({ type: "spki", format: "der" }));
+/** A signing key pair: {type: "rsa"|"ecdsa", privateKey, der (SPKI public key)}. */
+export function signingKey(type = "rsa") {
+  const { publicKey, privateKey } = type === "rsa"
+    ? generateKeyPairSync("rsa", { modulusLength: 2048 })
+    : generateKeyPairSync("ec", { namedCurve: "P-256" });
+  return { type, privateKey, der: new Uint8Array(publicKey.export({ type: "spki", format: "der" })) };
 }
 
 export function idFromKey(der) {
@@ -35,17 +38,28 @@ function varint(n) {
 }
 const field = (num, bytes) => concat(varint((num << 3) | 2), varint(bytes.length), bytes);
 
-export function makeCrx3(zip, der, { idOverride } = {}) {
-  const idBytes = createHash("sha256").update(der).digest().subarray(0, 16);
-  const proof = concat(field(1, der), field(2, new Uint8Array(256)));
-  const signed = field(1, idOverride ?? new Uint8Array(idBytes));
-  const header = concat(field(2, proof), field(10000, signed));
+/**
+ * Builds a CRX3 signed the way Chrome signs it. `keys` is one key or a list (the first one is the
+ * extension's own key, used for crx_id). `badSignature` replaces the signatures with junk, i.e. a
+ * forged package that carries a real public key.
+ */
+export function makeCrx3(zip, keys, { idOverride, badSignature } = {}) {
+  keys = [keys].flat();
+  const idBytes = createHash("sha256").update(keys[0].der).digest().subarray(0, 16);
+  const signedHeaderData = field(1, idOverride ?? new Uint8Array(idBytes));
+  const data = concat(toBytes("CRX3 SignedData\x00"), u32(signedHeaderData.length), signedHeaderData, zip);
+  const proofs = keys.map((k) => {
+    const sig = badSignature ? new Uint8Array(k.type === "rsa" ? 256 : 72).fill(7) : new Uint8Array(sign("sha256", data, k.privateKey));
+    return field(k.type === "rsa" ? 2 : 3, concat(field(1, k.der), field(2, sig)));
+  });
+  const header = concat(...proofs, field(10000, signedHeaderData));
   return concat(MAGIC, u32(3), u32(header.length), header, zip);
 }
 
-export function makeCrx2(zip, der) {
-  const sig = new Uint8Array(128);
-  return concat(MAGIC, u32(2), u32(der.length), u32(sig.length), der, sig, zip);
+/** Builds a CRX2: RSA/SHA-1 signature over the ZIP. */
+export function makeCrx2(zip, key, { badSignature } = {}) {
+  const sig = badSignature ? new Uint8Array(256) : new Uint8Array(sign("sha1", zip, key.privateKey));
+  return concat(MAGIC, u32(2), u32(key.der.length), u32(sig.length), key.der, sig, zip);
 }
 
 /** Real Chrome Web Store downloads (fetched by `npm run fixtures`); tests skip if missing. */

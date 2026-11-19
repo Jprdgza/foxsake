@@ -78,70 +78,161 @@ function readFields(buf) {
 }
 
 function parseCrx3Header(header) {
-  const publicKeys = [];
+  const proofs = [];
   let crxId = null;
+  let signedHeaderData = new Uint8Array(0);
   for (const { field, bytes } of readFields(header)) {
     if (field === 2 || field === 3) {
       // AsymmetricKeyProof { bytes public_key = 1; bytes signature = 2; }
-      const key = readFields(bytes).find((f) => f.field === 1);
-      if (key) publicKeys.push({ type: field === 2 ? "rsa" : "ecdsa", key: key.bytes });
+      const parts = readFields(bytes);
+      const key = parts.find((f) => f.field === 1);
+      const signature = parts.find((f) => f.field === 2);
+      if (!key || !signature) throw new CrxError("Malformed CRX3 header (a key proof is missing its key or signature).");
+      proofs.push({ type: field === 2 ? "rsa" : "ecdsa", key: key.bytes, signature: signature.bytes });
     } else if (field === 10000) {
-      // SignedData { bytes crx_id = 1; }
+      // signed_header_data: a serialized SignedData { bytes crx_id = 1; }
+      signedHeaderData = bytes;
       const id = readFields(bytes).find((f) => f.field === 1);
       if (id && id.bytes.length === 16) crxId = bytesToChromeId(id.bytes);
     }
   }
-  return { publicKeys, crxId };
+  return { proofs, crxId, signedHeaderData };
+}
+
+// --- Signature checks (WebCrypto, so the same code runs in Node and in the add-on) ------
+const subtle = () => globalThis.crypto.subtle;
+const CRX3_PREFIX = new TextEncoder().encode("CRX3 SignedData\x00");
+
+/** CRX3 signs: "CRX3 SignedData\0" | uint32 LE length of signed_header_data | signed_header_data | ZIP. */
+function crx3SignedBytes(signedHeaderData, zip) {
+  const out = new Uint8Array(CRX3_PREFIX.length + 4 + signedHeaderData.length + zip.length);
+  out.set(CRX3_PREFIX, 0);
+  new DataView(out.buffer).setUint32(CRX3_PREFIX.length, signedHeaderData.length, true);
+  out.set(signedHeaderData, CRX3_PREFIX.length + 4);
+  out.set(zip, CRX3_PREFIX.length + 4 + signedHeaderData.length);
+  return out;
+}
+
+/** CRX signatures are DER (SEQUENCE { INTEGER r, INTEGER s }); WebCrypto wants r and s as 32 bytes each. */
+function ecdsaDerToRaw(der) {
+  let pos = 0;
+  const readLen = () => {
+    if (pos >= der.length) throw new Error("short");
+    let len = der[pos++];
+    if (len & 0x80) {
+      const n = len & 0x7f;
+      if (n < 1 || n > 2) throw new Error("bad length");
+      len = 0;
+      for (let i = 0; i < n; i++) {
+        if (pos >= der.length) throw new Error("short");
+        len = (len << 8) | der[pos++];
+      }
+    }
+    return len;
+  };
+  const readInt = () => {
+    if (der[pos++] !== 0x02) throw new Error("not an INTEGER");
+    const len = readLen();
+    if (pos + len > der.length) throw new Error("short");
+    let v = der.subarray(pos, pos + len);
+    pos += len;
+    while (v.length > 1 && v[0] === 0) v = v.subarray(1);
+    if (v.length > 32) throw new Error("integer too large");
+    const out = new Uint8Array(32);
+    out.set(v, 32 - v.length);
+    return out;
+  };
+  if (der[pos++] !== 0x30) throw new Error("not a SEQUENCE");
+  const seqLen = readLen();
+  if (pos + seqLen !== der.length) throw new Error("trailing bytes");
+  const raw = new Uint8Array(64);
+  raw.set(readInt(), 0);
+  raw.set(readInt(), 32);
+  if (pos !== der.length) throw new Error("trailing bytes");
+  return raw;
+}
+
+async function verifyProof({ type, key, signature }, data, hash = "SHA-256") {
+  try {
+    if (type === "rsa") {
+      const k = await subtle().importKey("spki", key, { name: "RSASSA-PKCS1-v1_5", hash }, false, ["verify"]);
+      return await subtle().verify("RSASSA-PKCS1-v1_5", k, signature, data);
+    }
+    const k = await subtle().importKey("spki", key, { name: "ECDSA", namedCurve: "P-256" }, false, ["verify"]);
+    return await subtle().verify({ name: "ECDSA", hash: "SHA-256" }, k, ecdsaDerToRaw(signature), data);
+  } catch {
+    return false; // unparseable key or signature
+  }
 }
 
 /**
- * Unwraps a CRX2/CRX3 (or passes through a plain ZIP).
+ * Unwraps a CRX2/CRX3 (or passes through a plain ZIP) and checks its signatures.
+ * A package is rejected if any signature in it is invalid. `chromeId` is only set when it comes
+ * from a public key whose signature over this exact package verifies (`verified: true`);
+ * anything else (plain ZIPs, CRX3 files without a crx_id) has `chromeId: null`.
  * @param {Uint8Array} bytes
- * @returns {Promise<{format: "crx3"|"crx2"|"zip", zip: Uint8Array, chromeId: string|null, publicKey: Uint8Array|null}>}
+ * @returns {Promise<{format: "crx3"|"crx2"|"zip", zip: Uint8Array, chromeId: string|null, publicKey: Uint8Array|null, verified: boolean}>}
  */
 export async function unwrapCrx(bytes) {
   if (!(bytes instanceof Uint8Array)) bytes = new Uint8Array(bytes);
   if (startsWith(bytes, ZIP_LOCAL) || startsWith(bytes, ZIP_EMPTY)) {
-    return { format: "zip", zip: bytes, chromeId: null, publicKey: null };
+    return { format: "zip", zip: bytes, chromeId: null, publicKey: null, verified: false };
   }
   if (bytes.length < 12 || !startsWith(bytes, MAGIC)) {
     throw new CrxError("Not a Chrome extension: missing the 'Cr24' signature (and not a ZIP either).");
   }
   const version = u32(bytes, 4);
-  let zipStart;
+  let zip;
   let chromeId = null;
   let publicKey = null;
 
   if (version === 3) {
     const headerLen = u32(bytes, 8);
     if (headerLen > MAX_HEADER) throw new CrxError(`CRX3 header length ${headerLen} is implausibly large.`);
-    zipStart = 12 + headerLen;
+    const zipStart = 12 + headerLen;
     if (zipStart > bytes.length) throw new CrxError("CRX3 header length points past the end of the file.");
-    const { publicKeys, crxId } = parseCrx3Header(bytes.subarray(12, zipStart));
-    // The declared crx_id must match the SHA-256 of one of the included public keys.
-    for (const pk of publicKeys) {
-      if ((await chromeIdFromPublicKey(pk.key)) === crxId) {
-        publicKey = pk.key;
-        break;
+    zip = bytes.subarray(zipStart);
+    checkZip(zip);
+    const { proofs, crxId, signedHeaderData } = parseCrx3Header(bytes.subarray(12, zipStart));
+    if (!proofs.length) throw new CrxError("This CRX isn't signed (no signatures in its header).");
+    const data = crx3SignedBytes(signedHeaderData, zip);
+    for (const proof of proofs) {
+      if (!(await verifyProof(proof, data))) {
+        throw new CrxError("This CRX's signature is invalid: the file was modified or forged after it was signed.");
       }
     }
-    if (crxId && !publicKey) throw new CrxError("CRX3 header is inconsistent: crx_id doesn't match any included public key.");
-    chromeId = crxId;
+    if (crxId) {
+      for (const p of proofs) {
+        if ((await chromeIdFromPublicKey(p.key)) === crxId) { publicKey = p.key; break; }
+      }
+      if (!publicKey) throw new CrxError("CRX3 header is inconsistent: crx_id doesn't match any of its signing keys.");
+      chromeId = crxId;
+    }
   } else if (version === 2) {
     const keyLen = u32(bytes, 8);
     const sigLen = u32(bytes, 12);
     if (keyLen > MAX_HEADER || sigLen > MAX_HEADER) throw new CrxError("CRX2 key/signature length is implausibly large.");
-    zipStart = 16 + keyLen + sigLen;
+    const zipStart = 16 + keyLen + sigLen;
     if (zipStart > bytes.length) throw new CrxError("CRX2 header lengths point past the end of the file.");
-    publicKey = bytes.slice(16, 16 + keyLen);
-    chromeId = await chromeIdFromPublicKey(publicKey);
+    zip = bytes.subarray(zipStart);
+    checkZip(zip);
+    const key = bytes.slice(16, 16 + keyLen);
+    const signature = bytes.slice(16 + keyLen, zipStart);
+    // CRX2: RSA PKCS#1 v1.5 with SHA-1 over the ZIP.
+    if (!(await verifyProof({ type: "rsa", key, signature }, zip, "SHA-1"))) {
+      throw new CrxError("This CRX's signature is invalid: the file was modified or forged after it was signed.");
+    }
+    publicKey = key;
+    chromeId = await chromeIdFromPublicKey(key);
   } else {
     throw new CrxError(`Unsupported CRX version ${version} (only 2 and 3 exist).`);
   }
 
-  const zip = bytes.subarray(zipStart);
+  return { format: version === 3 ? "crx3" : "crx2", zip, chromeId, publicKey, verified: !!chromeId };
+}
+
+function checkZip(zip) {
   if (!startsWith(zip, ZIP_LOCAL) && !startsWith(zip, ZIP_EMPTY)) {
     throw new CrxError("CRX payload is not a ZIP archive (bad offsets or corrupt file).");
   }
-  return { format: version === 3 ? "crx3" : "crx2", zip, chromeId, publicKey };
 }
