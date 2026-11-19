@@ -14,7 +14,14 @@ browser. There's also a command-line version that does the same thing.
 
 ## Install the add-on
 
-1. Allow unsigned add-ons. Converted extensions can't be signed by Mozilla, so open `about:config`,
+> **Use a separate profile.** Setting `xpinstall.signatures.required` to `false` affects the whole profile,
+> not just Fox Sake. Firefox also stops checking the signatures of add-ons you already have, so any program
+> running on your computer could swap the files of, say, your password manager without Firefox noticing.
+> Keep converted extensions in their own Zen profile (open `about:profiles` and click **Create a New Profile**),
+> and keep password managers, banking, and add-ons that can control your browser or run programs in a
+> profile where signatures stay required.
+
+1. Allow unsigned add-ons (in the profile you'll use for converted extensions). Converted extensions can't be signed by Mozilla, so open `about:config`,
    search for `xpinstall.signatures.required` and set it to `false`. Zen honours this pref. In Firefox,
    use Developer Edition, Nightly or ESR; regular Firefox ignores it.
 2. Download `foxsake-<version>.xpi` from the [latest release](https://github.com/Jprdgza/foxsake/releases/latest)
