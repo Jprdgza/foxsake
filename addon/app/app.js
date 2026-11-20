@@ -5,7 +5,10 @@
 import { downloadCrx, parseExtensionId } from "../lib/core/webstore.js";
 import { safeFilePart } from "../lib/core/archive.js";
 import { checkReplacement } from "../lib/core/replace.js";
-import { convertedAddons, checkUpdates, sharedProfileRisks } from "./library.js";
+import {
+  convertedAddons, checkUpdates, sharedProfileRisks, idsForConversion, saveId,
+  expectInstall, noteInstalled, checkReplacements, replacedAddons, trustReplacement, forgetAddon,
+} from "./library.js";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, props = {}, ...kids) => {
@@ -67,7 +70,8 @@ async function run(title, getPackage) {
     const pkg = await getPackage();
     setStatus("Converting…");
     setProgress(0, 0);
-    const result = await convertInWorker({ ...pkg, targetVersion: geckoVersion });
+    // Updates reuse the extension's existing Firefox ID; new extensions get a random one.
+    const result = await convertInWorker({ ...pkg, targetVersion: geckoVersion, knownIds: await idsForConversion() });
     await showResult(result, { fromStore: !!pkg.chromeId });
   } catch (e) {
     setProgress(false);
@@ -229,10 +233,13 @@ async function showResult({ xpi, meta, report, classified }, { fromStore }) {
   const { reports = {} } = await browser.storage.local.get("reports");
   reports[meta.geckoId] = { meta, report: report.slice(0, MAX_REPORT_CHARS) };
   await browser.storage.local.set({ reports });
+  await saveId(meta);
 }
 
 function startInstall() {
-  // Synchronous on purpose: the navigation has to happen inside the click.
+  // Tells the replacement watcher this install is Fox Sake's. Not awaited: the navigation has to
+  // happen inside the click, and the browser's prompts take far longer than this write.
+  expectInstall(current.meta);
   location.href = current.installUrl;
   const hint = $("install-hint");
   hint.className = "hint";
@@ -278,21 +285,15 @@ browser.management.onInstalled.addListener(async (info) => {
     hint.hidden = false;
     $("install").disabled = true;
     $("install-older").disabled = true;
-    // Remember which package was installed, so a later file with the same version can be checked.
-    if (info.version === current.meta.version) {
-      const { installs = {} } = await browser.storage.local.get("installs");
-      installs[info.id] = { version: info.version, sha256: current.meta.packageSha256 };
-      await browser.storage.local.set({ installs });
-    }
   }
+  // Records Fox Sake's own installs (with the package fingerprint) and flags anyone else's.
+  await noteInstalled(info);
+  renderReplaced();
   refreshLibrarySoon();
 });
 browser.management.onUninstalled.addListener(async (info) => {
-  const { installs = {} } = await browser.storage.local.get("installs");
-  if (installs[info.id]) {
-    delete installs[info.id];
-    await browser.storage.local.set({ installs });
-  }
+  await forgetAddon(info.id);
+  renderReplaced();
   refreshLibrarySoon();
 });
 browser.management.onEnabled.addListener(() => refreshLibrarySoon());
@@ -401,6 +402,35 @@ async function renderSharedProfile() {
     el("span", { className: "why", textContent: a.reasons.join(", ") }))));
 }
 
+// Converted extensions that were replaced by a file Fox Sake didn't install. The browser doesn't let
+// add-ons turn other add-ons off, so the user removes them; "I installed it myself" asks twice.
+async function renderReplaced() {
+  const list = await replacedAddons();
+  $("replaced").hidden = !list.length;
+  $("replaced-list").replaceChildren(...list.map((a) => {
+    const b = el("button", { textContent: "I installed it myself" });
+    let armed = false;
+    b.addEventListener("click", async () => {
+      if (!armed) {
+        armed = true;
+        b.textContent = `Yes, keep ${a.name}`;
+        const hint = $("replaced-hint");
+        hint.textContent = `Only confirm if you installed ${a.name} ${a.version} from a file yourself. If someone sent you that file, ` +
+          `remove the extension instead: its saved data is no longer safe. Click "Yes, keep ${a.name}" to confirm.`;
+        hint.hidden = false;
+        return;
+      }
+      await trustReplacement(a.id);
+      $("replaced-hint").hidden = true;
+      renderReplaced();
+    });
+    return el("li", {},
+      el("span", { className: "name", textContent: a.name }),
+      el("span", { className: "ver", textContent: `now ${a.version}` }),
+      b);
+  }));
+}
+
 $("check-updates").addEventListener("click", async () => {
   await askForAccess();
   checkAccess();
@@ -430,6 +460,7 @@ browser.runtime.getBrowserInfo().then((i) => {
 
 renderLibrary();
 renderSharedProfile();
+checkReplacements().catch(() => {}).then(renderReplaced);
 checkAccess();
 
 const wanted = /^#add=([a-p]{32})$/.exec(location.hash);
@@ -437,3 +468,4 @@ if (wanted) {
   history.replaceState(null, "", location.pathname);
   run("Converting…", fromStore(wanted[1]));
 }
+if (location.hash === "#replaced") history.replaceState(null, "", location.pathname); // the card is at the top

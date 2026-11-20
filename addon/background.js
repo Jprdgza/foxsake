@@ -1,6 +1,7 @@
 // Fox Sake background: opens the converter page (from the toolbar button or the Web Store
-// button), and once a day checks whether converted extensions have a newer store version.
-import { checkUpdates } from "./app/library.js";
+// button), once a day checks whether converted extensions have a newer store version, and watches
+// for converted extensions being replaced by files Fox Sake didn't install.
+import { checkUpdates, noteInstalled, checkReplacements, forgetAddon, updateBadge } from "./app/library.js";
 
 const ID_RE = /^[a-p]{32}$/;
 const STORE = "https://chromewebstore.google.com/";
@@ -29,9 +30,28 @@ browser.runtime.onMessage.addListener((msg, sender) => {
 
 browser.action.onClicked.addListener(() => openApp());
 
-const scheduleUpdates = () => browser.alarms.create("foxsake-updates", { delayInMinutes: 5, periodInMinutes: 24 * 60 });
-browser.runtime.onInstalled.addListener(scheduleUpdates);
-browser.runtime.onStartup.addListener(scheduleUpdates);
+// The browser doesn't wake this script for other add-ons' installs, so besides listening while it's
+// awake, it compares installed versions with Fox Sake's records at startup and every 15 minutes.
+const showReplaced = () => openApp("#replaced");
+async function watch() {
+  const found = await checkReplacements().catch(() => []);
+  if (found.length) showReplaced();
+  else updateBadge().catch(() => {});
+}
+
+function schedule() {
+  browser.alarms.create("foxsake-updates", { delayInMinutes: 5, periodInMinutes: 24 * 60 });
+  browser.alarms.create("foxsake-watch", { delayInMinutes: 1, periodInMinutes: 15 });
+  watch();
+}
+browser.runtime.onInstalled.addListener(schedule);
+browser.runtime.onStartup.addListener(schedule);
 browser.alarms.onAlarm.addListener((a) => {
   if (a.name === "foxsake-updates") checkUpdates().catch(() => {});
+  if (a.name === "foxsake-watch") watch();
 });
+
+browser.management.onInstalled.addListener(async (info) => {
+  if ((await noteInstalled(info).catch(() => null)) === "foreign") showReplaced();
+});
+browser.management.onUninstalled.addListener((info) => { forgetAddon(info.id).catch(() => {}); });

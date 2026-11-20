@@ -1,7 +1,7 @@
 // Rewrites a Chrome manifest.json into one Firefox accepts. Every change is logged with a reason.
 import { findPath, resolveRelative, toText } from "./archive.js";
+import { chooseGeckoId } from "./ids.js";
 
-export const GECKO_SUFFIX = "@foxsake";
 export const STRICT_MIN_VERSION = "128.0"; // first Firefox with MAIN-world content scripts
 
 /** Keys Chrome uses that Firefox has no use for, with a plain-English reason. */
@@ -27,7 +27,7 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
 /**
  * @returns {{manifest: object, changes: Array<{path:string, action:string, before?:any, after?:any, reason:string}>, background: object|null, warnings: string[]}}
  */
-export function rewriteManifest(original, { files, chromeId, localId, support }) {
+export function rewriteManifest(original, { files, chromeId, localId, support, knownIds }) {
   const m = clone(original);
   const changes = [];
   const warnings = [];
@@ -37,19 +37,18 @@ export function rewriteManifest(original, { files, chromeId, localId, support })
     warnings.push(`Unexpected manifest_version ${m.manifest_version}.`);
   }
 
-  // --- Firefox ID: deterministic so reinstalls/updates keep data and logins ---
+  // --- Firefox ID: unguessable, and reused for updates so they keep data and logins (see ids.js) ---
   // Unsigned local packages have no Chrome ID; convert.js gives them local-<hash of the package>,
   // so a different file can never reuse another add-on's ID (and its saved data).
   const base = chromeId ?? localId;
-  if (!/^([a-p]{32}|local-[0-9a-f]{16})$/.test(base ?? "")) throw new Error("Internal error: no valid ID for the converted add-on.");
-  const geckoId = `${base}${GECKO_SUFFIX}`;
+  const { geckoId, isNew: newId } = chooseGeckoId(base, knownIds);
   const bss = m.browser_specific_settings ?? {};
   const before = clone(bss);
   bss.gecko = { ...(bss.gecko ?? {}), id: geckoId, strict_min_version: STRICT_MIN_VERSION };
   delete bss.gecko.update_url;
   m.browser_specific_settings = bss;
   delete m.applications;
-  log("browser_specific_settings.gecko", "set", "Gives the add-on a fixed Firefox ID (<chromeId>@foxsake) so updates keep its saved data, and sets the minimum Firefox version.", before.gecko, bss.gecko);
+  log("browser_specific_settings.gecko", "set", "Gives the add-on its own Firefox ID, which Fox Sake reuses so updates keep its saved data, and sets the minimum Firefox version.", before.gecko, bss.gecko);
 
   // --- Background: service worker → event page scripts ---
   let background = null;
@@ -183,7 +182,7 @@ export function rewriteManifest(original, { files, chromeId, localId, support })
     }
   }
 
-  return { manifest: m, changes, background, warnings, geckoId };
+  return { manifest: m, changes, background, warnings, geckoId, idBase: base, newId };
 }
 
 const PERMISSION_NOTES = {

@@ -23,6 +23,9 @@ their own Zen profile (open `about:profiles` and click **Create a New Profile**)
 managers, banking, and add-ons that can control your browser or run programs in a profile where signatures
 stay required. Fox Sake's page lists the add-ons in its profile that this applies to.
 
+Never install `.xpi` files someone sends you in this profile: with signing off, Zen can't tell them apart from
+real updates, and an update gets all of the extension's saved data. Install extensions through Fox Sake only.
+
 ### Steps
 
 1. Allow unsigned add-ons (in the profile you'll use for converted extensions). Converted extensions can't be signed by Mozilla, so open `about:config`,
@@ -42,8 +45,11 @@ stay required. Fox Sake's page lists the add-ons in its profile that this applie
   `.crx`, `.zip` or unpacked folder, see the extensions you've converted, and update them. Fox Sake checks
   the store for new versions once a day and shows a badge when there are some.
 
-Each extension gets the Firefox ID `<chromeId>@foxsake`, so updates keep its settings, storage and logins.
-That ID only comes from a signature Fox Sake has checked: a `.crx` with a forged or broken signature is refused,
+Each extension gets its own Firefox ID (`<chromeId>-<random>@foxsake`), and Fox Sake reuses it for updates,
+so they keep its settings, storage and logins. Because part of it is random, nobody else can build a file
+that installs over it. If a converted extension is replaced by a file Fox Sake didn't install anyway (for
+example one converted before 2.0.5, which keeps its old `<chromeId>@foxsake` ID), Fox Sake shows a red
+warning and asks you to remove it. The Chrome ID part only comes from a signature Fox Sake has checked: a `.crx` with a forged or broken signature is refused,
 and unsigned `.zip` files and folders get an ID based on their contents (`local-…@foxsake`), so they can't take
 over an extension you already have. If a file you picked would replace an installed extension, Fox Sake asks
 twice, because the new file gets all of that extension's saved data. The same goes for a file with the same
@@ -78,7 +84,9 @@ foxsake run <name>          # load it in a separate test profile, console saved 
 
 Like the add-on, the CLI won't replace an installed extension with an older version, a different build of
 the same version, or a file that didn't come straight from the store. Add `--allow-downgrade` or `--replace`
-to do it anyway.
+to do it anyway. The CLI keeps each extension's Firefox ID in `out/ids.json`. If the add-on also manages an
+extension, an update installed with the CLI looks like a foreign replacement to it; click
+**I installed it myself** on its warning.
 
 ## What gets converted
 

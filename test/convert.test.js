@@ -11,12 +11,12 @@ const support = createSupport("140.0");
 const ID = "abcdefghijklmnopabcdefghijklmnop";
 const filesOf = (o) => new Map(Object.entries(o).map(([k, v]) => [k, toBytes(v)]));
 
-test("adds a deterministic gecko ID and strips Chrome-only keys", () => {
+test("adds an unguessable gecko ID and strips Chrome-only keys", () => {
   const { manifest, changes } = rewriteManifest(
     { manifest_version: 3, name: "x", version: "1.0", update_url: "https://clients2.google.com/service/update2/crx", key: "abc", minimum_chrome_version: "100", offline_enabled: true, differential_fingerprint: "1.x" },
     { files: new Map(), chromeId: ID, support },
   );
-  assert.equal(manifest.browser_specific_settings.gecko.id, `${ID}@foxsake`);
+  assert.match(manifest.browser_specific_settings.gecko.id, new RegExp(`^${ID}-[0-9a-f]{16}@foxsake$`));
   assert.equal(manifest.browser_specific_settings.gecko.strict_min_version, "128.0");
   for (const k of ["update_url", "key", "minimum_chrome_version", "offline_enabled", "differential_fingerprint"]) {
     assert.equal(manifest[k], undefined, k);
@@ -90,7 +90,7 @@ test("end to end: offscreen + sidePanel + external messaging + chrome-extension 
   const r = await convert(crx, { targetVersion: "140.0" });
   const files = readZip(r.xpi);
   const m = JSON.parse(toText(files.get("manifest.json")));
-  assert.equal(m.browser_specific_settings.gecko.id, `${id}@foxsake`);
+  assert.match(m.browser_specific_settings.gecko.id, new RegExp(`^${id}-[0-9a-f]{16}@foxsake$`));
   assert.equal(m.background.scripts[0], "foxsake/background-shim.js");
   assert.ok(files.has("foxsake/background-shim.js"));
   for (const s of ["offscreen", "sidePanel", "external", "id-remap", "external-bridge"]) assert.ok(r.meta.shims.includes(s), s);
@@ -111,7 +111,7 @@ test("end to end: offscreen + sidePanel + external messaging + chrome-extension 
 
 test("real QuillBot converts with the expected shims", { skip: !realFixture("quillbot.crx") && "run `npm run fixtures` first" }, async () => {
   const r = await convert(realFixture("quillbot.crx"), { targetVersion: "140.0" });
-  assert.equal(r.meta.geckoId, "iidnbdjijdkbmajdffnidomddglmieko@foxsake");
+  assert.match(r.meta.geckoId, /^iidnbdjijdkbmajdffnidomddglmieko-[0-9a-f]{16}@foxsake$/);
   assert.ok(r.meta.shims.includes("external-bridge"));
   assert.ok(r.meta.shims.includes("sidePanel"));
   assert.equal(r.manifest.sidebar_action.default_panel, "sidePanel.html");

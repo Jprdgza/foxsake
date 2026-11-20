@@ -1,4 +1,4 @@
-// Piece: the extension refers to its own Chrome ID. In Firefox its ID is <chromeId>@foxsake,
+// Piece: the extension refers to its own Chrome ID. In Firefox it has a different ID (<chromeId>-<random>@foxsake),
 // so messages addressed to the old ID are redirected to the extension itself.
 for (const t of TARGETS) {
   const rt = t.runtime;

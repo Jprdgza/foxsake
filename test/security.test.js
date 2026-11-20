@@ -25,17 +25,17 @@ test("unsigned local packages get an ID from their contents, never from their na
   const a = await convert(mk("Alpha Tool"), { targetVersion: "140.0" });
   const a2 = await convert(mk("Alpha Tool"), { targetVersion: "140.0" });
   const b = await convert(mk("Alpha Tool", "different code"), { targetVersion: "140.0" });
-  assert.match(a.meta.geckoId, /^local-[0-9a-f]{16}@foxsake$/);
+  assert.match(a.meta.geckoId, /^local-[0-9a-f]{16}-[0-9a-f]{16}@foxsake$/);
   assert.equal(a.meta.chromeId, null);
-  assert.equal(a.meta.geckoId, a2.meta.geckoId, "same bytes, same ID");
-  assert.notEqual(a.meta.geckoId, b.meta.geckoId, "same name, different contents: different ID");
+  assert.equal(a.meta.idBase, a2.meta.idBase, "same bytes, same base");
+  assert.notEqual(a.meta.idBase, b.meta.idBase, "same name, different contents: different base");
 });
 
 test("manifest.key can't claim another extension's ID", async () => {
   const victim = signingKey();
   const r = await convert(makeZip({ "manifest.json": JSON.stringify({ manifest_version: 3, name: "x", version: "1", key: Buffer.from(victim.der).toString("base64") }) }), { targetVersion: "140.0" });
-  assert.match(r.meta.geckoId, /^local-[0-9a-f]{16}@foxsake$/);
-  assert.notEqual(r.meta.geckoId, `${idFromKey(victim.der)}@foxsake`);
+  assert.match(r.meta.geckoId, /^local-[0-9a-f]{16}-[0-9a-f]{16}@foxsake$/);
+  assert.ok(!r.meta.geckoId.startsWith(idFromKey(victim.der)));
 });
 
 test("a forged CRX carrying a real extension's public key is refused", async () => {
@@ -47,7 +47,8 @@ test("a forged CRX carrying a real extension's public key is refused", async () 
 test("a validly signed CRX keeps its Chrome ID", async () => {
   const k = signingKey("ecdsa");
   const r = await convert(makeCrx3(makeZip({ "manifest.json": JSON.stringify({ manifest_version: 3, name: "x", version: "1" }) }), k), { targetVersion: "140.0" });
-  assert.equal(r.meta.geckoId, `${idFromKey(k.der)}@foxsake`);
+  assert.equal(r.meta.chromeId, idFromKey(k.der));
+  assert.equal(r.meta.idBase, idFromKey(k.der));
 });
 
 test("store downloads must be signed by the extension that was asked for", async () => {
@@ -56,7 +57,7 @@ test("store downloads must be signed by the extension that was asked for", async
   const pkg = makeZip({ "manifest.json": JSON.stringify({ manifest_version: 3, name: "x", version: "1" }) });
   const id = idFromKey(asked.der);
   const ok = await convert(makeCrx3(pkg, asked), { chromeId: id, targetVersion: "140.0" });
-  assert.equal(ok.meta.geckoId, `${id}@foxsake`);
+  assert.equal(ok.meta.idBase, id);
   await assert.rejects(convert(makeCrx3(pkg, other), { chromeId: id, targetVersion: "140.0" }), /signed as extension/);
   await assert.rejects(convert(pkg, { chromeId: id, targetVersion: "140.0" }), /isn't signed/);
 });

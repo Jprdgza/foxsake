@@ -48,11 +48,37 @@ Signatures are checked with WebCrypto, so the CLI and the add-on run the same co
 The Firefox ID decides which installed add-on a conversion replaces, and so whose saved data
 (`storage`, IndexedDB, granted permissions) the new code inherits. It only comes from a verified signature:
 
-- Store downloads: `<chromeId>@foxsake`, and the download has to be signed by the extension that was asked for.
-- A signed `.crx` file: `<chromeId>@foxsake` from the key whose signature verified.
-- Unsigned packages (`.zip`, folders): `local-<first 16 hex of SHA-256 of the package>@foxsake`. `manifest.key`
-  is ignored because it's a public key anyone can copy. A changed file gets a new ID, so it installs
+- Store downloads: the base is the Chrome ID, and the download has to be signed by the extension that was asked for.
+- A signed `.crx` file: the Chrome ID of the key whose signature verified.
+- Unsigned packages (`.zip`, folders): `local-<first 16 hex of SHA-256 of the package>`. `manifest.key`
+  is ignored because it's a public key anyone can copy. A changed file gets a new base, so it installs
   alongside the old one instead of taking over its data.
+
+The Firefox ID is `<base>-<16 random hex>@foxsake` (`src/core/ids.js`). The random part is picked the first
+time an extension is converted and saved (`storage.local.ids` in the add-on, `out/ids.json` in the CLI), and
+every later conversion reuses the ID of the installed copy, so updates keep its data. It has to be random:
+with signing off, Firefox installs any `.xpi` that carries an existing ID as an update of that add-on, data
+included, and a Chrome ID is public. Add-ons converted before 2.0.5 keep `<base>@foxsake`, since a new ID
+would mean starting with empty storage; the watcher below covers them.
+
+### Replacements Fox Sake didn't make
+
+Fox Sake can't stop someone from installing a ready-made `.xpi` with a converted add-on's ID, and it can't
+undo it either: `management.setEnabled` only works on themes (and on add-ons installed by enterprise policy),
+and there is no way for one add-on to uninstall another. So it detects and tells:
+
+- Before navigating to the install blob, the page saves a token `{version, sha256, permissions, expires}`
+  (15 minutes) in `storage.local.pending`.
+- `management.onInstalled`, in the background and on the page, accepts an install of a converted add-on
+  only with a matching token, and records it in `installs`. Anything else goes into `flagged`: the badge
+  turns into a red "!" and the background opens the page, whose red card tells the user to remove the add-on
+  in `about:addons` unless they installed it themselves. "I installed it myself" asks twice.
+- The browser doesn't promise to wake an idle event page for other add-ons' installs, so the background also
+  compares installed versions with `installs` at startup and every 15 minutes (`checkReplacements()`).
+  An add-on seen for the first time is taken as it is. This check can't see a same-version replacement; the
+  event listener can.
+- Installs made with the CLI aren't seen by the add-on, so they're flagged if the add-on also tracks that
+  extension. "I installed it myself" clears it.
 
 ## Replacing an installed add-on
 

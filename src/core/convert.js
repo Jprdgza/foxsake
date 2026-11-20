@@ -72,7 +72,9 @@ export async function scanPackage(bytes, opts = {}) {
 /**
  * Full conversion.
  * @param {Uint8Array} bytes CRX or ZIP
- * @param {{chromeId?: string, targetVersion?: string, source?: string}} opts
+ * @param {{chromeId?: string, targetVersion?: string, source?: string, knownIds?: Object<string, string>}} opts
+ *   `knownIds` maps an ID base (Chrome ID or local-<hash>) to the Firefox ID already in use for it, so
+ *   updates keep the same ID. Without an entry, the conversion gets a new random ID (meta.newId).
  */
 export async function convert(bytes, opts = {}) {
   const support = createSupport(opts.targetVersion ?? DEFAULT_TARGET);
@@ -89,9 +91,9 @@ export async function convert(bytes, opts = {}) {
 
   const findings = scanExtension(files, { chromeId, support });
   const slug = slugify(shortName && !shortName.startsWith("__MSG_") && shortName.length < name.length ? shortName : name);
-  const rewritten = rewriteManifest(original, { files, chromeId, localId, support });
+  const rewritten = rewriteManifest(original, { files, chromeId, localId, support, knownIds: opts.knownIds });
   const manifest = rewritten.manifest;
-  const shimResult = applyShims({ files, manifest, original, findings, background: rewritten.background, chromeId });
+  const shimResult = applyShims({ files, manifest, original, findings, background: rewritten.background, chromeId, geckoId: rewritten.geckoId });
 
   const missing = checkReferencedFiles(manifest, files);
   files.set("manifest.json", toBytes(JSON.stringify(manifest, null, 2)));
@@ -105,6 +107,9 @@ export async function convert(bytes, opts = {}) {
     version: manifest.version,
     chromeId,
     geckoId: rewritten.geckoId,
+    idBase: rewritten.idBase,
+    newId: rewritten.newId,
+    permissions: declaredPermissions(manifest),
     format,
     packageSha256,
     source: opts.source ?? null,
@@ -119,6 +124,24 @@ export async function convert(bytes, opts = {}) {
     applied: shimResult.applied, urlRewrites: shimResult.urlRewrites, removedFiles, background: rewritten.background,
   });
   return { xpi, manifest, meta, report, classified };
+}
+
+/**
+ * Every permission the converted manifest asks for, required or optional, API or host, as one sorted
+ * list. Optional ones are marked "(optional)". Used to show what an update adds.
+ */
+export function declaredPermissions(m) {
+  const out = new Set();
+  const add = (list, optional) => (Array.isArray(list) ? list : []).forEach((p) => {
+    if (typeof p === "string") out.add(optional ? `${p} (optional)` : p);
+  });
+  add(m.permissions, false);
+  add(m.host_permissions, false);
+  add(m.optional_permissions, true);
+  add(m.optional_host_permissions, true);
+  // Required beats optional when both list the same thing.
+  for (const p of [...out]) if (p.endsWith(" (optional)") && out.has(p.slice(0, -11))) out.delete(p);
+  return [...out].sort();
 }
 
 function checkReferencedFiles(m, files) {

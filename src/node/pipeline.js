@@ -7,7 +7,8 @@ import { parseExtensionId } from "../core/webstore.js";
 import { writeZip, safePath, safeFilePart } from "../core/archive.js";
 import { downloadCrx, readLocal } from "./fetch-crx.js";
 import { lintXpi, renderLint } from "./lint.js";
-import { OUT, ORIGINALS, ensureDirs, recordConversion } from "./library.js";
+import { OUT, ORIGINALS, ensureDirs, recordConversion, loadIds, saveId } from "./library.js";
+import { knownIds } from "../core/ids.js";
 import { zenGeckoVersion, installedAddons, openInZen, addonFileMtime, installedPackageSha256 } from "./zen.js";
 import { checkReplacement } from "../core/replace.js";
 
@@ -54,8 +55,11 @@ export async function doConvert(input, opts = {}) {
   ensureDirs();
   const gecko = zenGeckoVersion();
   say("⚙ Converting…");
-  const result = await convert(pkg.bytes, { chromeId: pkg.chromeId, targetVersion: gecko ?? undefined, source: pkg.source });
+  // Updates reuse the extension's Firefox ID (installed in Zen, or picked on an earlier run).
+  const ids = knownIds([...installedAddons().keys()], loadIds());
+  const result = await convert(pkg.bytes, { chromeId: pkg.chromeId, targetVersion: gecko ?? undefined, source: pkg.source, knownIds: ids });
   const { meta } = result;
+  saveId(meta);
   if (pkg.downloaded) writeFileSync(join(ORIGINALS, `${safeFilePart(meta.chromeId)}-${safeFilePart(meta.version)}.crx`), pkg.bytes);
 
   // The version comes from the (untrusted) package, so it's sanitized before going into a path.

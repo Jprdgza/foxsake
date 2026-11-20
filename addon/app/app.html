@@ -23,6 +23,18 @@
       <button id="allow" class="primary">Allow access</button>
     </section>
 
+    <section id="replaced" class="card bad-card" hidden>
+      <h2>Replaced by a file Fox Sake didn't install</h2>
+      <p>These converted extensions were replaced by a file that didn't come through Fox Sake. Whoever made that
+        file now has everything the extension had saved, including logins. Fox Sake can't turn them off or remove them:
+        the browser only lets you do that.</p>
+      <p><strong>Unless you installed that file yourself:</strong> open the menu → <strong>Add-ons and Themes</strong>
+        (<code>about:addons</code>), find the extension and click <strong>Remove</strong>. Then sign out of the accounts
+        you used in it and change those passwords.</p>
+      <ul id="replaced-list" class="library"></ul>
+      <p id="replaced-hint" class="hint warn" hidden></p>
+    </section>
+
     <section id="job" class="card" hidden>
       <h2 id="job-title">Converting…</h2>
       <p id="job-status" class="muted"></p>

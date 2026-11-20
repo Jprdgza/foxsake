@@ -75,7 +75,7 @@ const matchesDocs = (patterns = []) =>
  * Plans and applies shims. Mutates `files` and `manifest`.
  * @returns {{applied: Array<{id:string, why:string, where:string[]}>, notes: string[], urlRewrites: Array}}
  */
-export function applyShims({ files, manifest, original, findings, background, chromeId }) {
+export function applyShims({ files, manifest, original, findings, background, chromeId, geckoId }) {
   const has = (id) => findings.has(id);
   const origPerms = [...(original.permissions ?? []), ...(original.optional_permissions ?? [])];
   const applied = [];
@@ -102,7 +102,7 @@ export function applyShims({ files, manifest, original, findings, background, ch
   const ecDropped = ecDeclared.filter((p) => tooBroadForExternal(p));
   if (ecDropped.length) notes.push(`Ignored externally_connectable.matches ${ecDropped.join(", ")}: Chrome doesn't allow patterns that cover all sites or a whole domain suffix, so these never worked there either.`);
   if (ecMatches.length) need("external", "manifest allows websites to message it (externally_connectable)");
-  if (ec?.ids?.length) notes.push("externally_connectable.ids (messages from other extensions) works natively in Firefox, but other extensions must use this add-on's new ID (" + (chromeId ?? "?") + "@foxsake).");
+  if (ec?.ids?.length) notes.push("externally_connectable.ids (messages from other extensions) works natively in Firefox, but other extensions must use this add-on's new ID (" + (geckoId ?? "?") + ").");
 
   if (pieces.includes("offscreen") && !background) notes.push("Uses chrome.offscreen but has no background script; the offscreen shim only works from the background.");
 

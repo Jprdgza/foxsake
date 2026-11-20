@@ -47,6 +47,8 @@ pre { max-height: 420px; overflow: auto; padding: 12px; background: var(--bg); b
 .library .why { color: var(--muted); font-size: 13px; text-align: right; }
 .note p { margin: 8px 0; }
 .warn-card { border-color: var(--accent); }
+.bad-card { border: 2px solid var(--bad); }
+.bad-card p { margin: 0 0 12px; }
 .warn-card p { margin: 0 0 12px; }
 code { font-size: 13px; }
 @media (max-width: 520px) { form { flex-direction: column; } }
