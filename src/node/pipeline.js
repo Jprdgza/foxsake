@@ -8,7 +8,8 @@ import { writeZip, safePath, safeFilePart } from "../core/archive.js";
 import { downloadCrx, readLocal } from "./fetch-crx.js";
 import { lintXpi, renderLint } from "./lint.js";
 import { OUT, ORIGINALS, ensureDirs, recordConversion } from "./library.js";
-import { zenGeckoVersion, installedAddons, openInZen, addonFileMtime } from "./zen.js";
+import { zenGeckoVersion, installedAddons, openInZen, addonFileMtime, installedPackageSha256 } from "./zen.js";
+import { checkReplacement } from "../core/replace.js";
 
 /** Where progress messages go (printed by default; tests can redirect them). */
 export const output = { say: (...a) => console.log(...a) };
@@ -82,7 +83,7 @@ export async function doConvert(input, opts = {}) {
   if (meta.unsupported.length) say(`  ⚠ Won't work in Firefox: ${meta.unsupported.join("; ")}`);
   if (meta.lint) say(`  Lint: ${meta.lint.errors} error(s), ${meta.lint.warnings} warning(s)`);
   say(`  Report: ${relative(process.cwd(), reportPath) || reportPath}`);
-  return { xpiPath, reportPath, meta };
+  return { xpiPath, reportPath, meta, fromStore: pkg.downloaded };
 }
 
 /** Throws (with a plain-English reason) if Firefox would reject this package. */
@@ -93,12 +94,41 @@ export function assertInstallable(meta) {
   }
 }
 
-export async function installAndWait(xpiPath, meta) {
+/**
+ * Throws (with a plain-English reason) if installing would replace the installed add-on with an older
+ * version, a different build of the same version, or a file that didn't come from the store, unless
+ * the matching option was given. The replacement would get all of the installed add-on's saved data.
+ * `installed` is {version, sha256} or null; `meta` needs version and packageSha256.
+ */
+export function assertReplaceable(meta, installed, { fromStore = false, allowDowngrade = false, replace = false } = {}) {
+  const check = checkReplacement({ installed, incoming: { version: meta.version, sha256: meta.packageSha256 ?? null }, fromStore });
+  const name = meta.name ?? meta.geckoId;
+  if (check.kind === "downgrade" && !allowDowngrade) {
+    throw new Error(`Not installing: ${name} ${installed.version} is installed and this is the older ${meta.version}. ` +
+      `Older versions can have security holes that were fixed later, and this one would get all of the installed version's ` +
+      `settings, logins and other saved data. If you really need the older version, run the same command with --allow-downgrade.`);
+  }
+  if (check.kind !== "downgrade" && check.confirm && !replace) {
+    const why = {
+      "different-build": `it is version ${meta.version}, the same as the installed one, but it isn't the same build: its contents differ`,
+      "unknown-build": `it is version ${meta.version}, the same as the installed one, and Fox Sake can't confirm it's the same build`,
+      upgrade: "it didn't come straight from the Chrome Web Store",
+    }[check.kind];
+    throw new Error(`Not installing: this would replace the installed ${name} ${installed.version} and get all of its settings, ` +
+      `logins and other saved data, and ${why}. If you trust where it came from, run the same command with --replace.`);
+  }
+  return check;
+}
+
+export async function installAndWait(xpiPath, meta, opts = {}) {
   assertInstallable(meta);
   const before = installedAddons().get(meta.geckoId);
+  const installedSha = before && installedPackageSha256(meta.geckoId);
+  const check = assertReplaceable(meta, before ? { version: before.version, sha256: installedSha } : null, opts);
+  if (check.kind === "downgrade") say(`⚠ Installing the older ${meta.version} over ${before.version} (--allow-downgrade).`);
   const beforeMtime = addonFileMtime(meta.geckoId);
   say(`\n🦊 Opening Zen's install prompt. In Zen, click "Add" (and "Okay" if asked).`);
-  if (before) say(`  (Updating ${before.version} → ${meta.version}. Saved data and logins are kept: same Firefox ID.)`);
+  if (before && check.kind !== "downgrade") say(`  (Replacing ${before.version} with ${meta.version}. Saved data and logins are kept: same Firefox ID.)`);
   openInZen(xpiPath);
   const deadline = Date.now() + 120_000;
   while (Date.now() < deadline) {

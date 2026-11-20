@@ -4,6 +4,7 @@
 // that don't come from a user gesture, so the Install button navigates to the package itself.
 import { downloadCrx, parseExtensionId } from "../lib/core/webstore.js";
 import { safeFilePart } from "../lib/core/archive.js";
+import { checkReplacement } from "../lib/core/replace.js";
 import { convertedAddons, checkUpdates } from "./library.js";
 
 const $ = (id) => document.getElementById(id);
@@ -30,7 +31,7 @@ const MAX_REPORT_CHARS = 200_000;
 
 let browserName = "Firefox";
 let busy = false;
-let current = null; // { meta, urls: [...] }
+let current = null; // { meta, installUrl, urls, confirm, older }
 
 // --- conversion job -------------------------------------------------------------------------
 
@@ -52,6 +53,7 @@ function startJob(title) {
   $("job-title").textContent = title;
   $("job-result").hidden = true;
   $("install-hint").hidden = true;
+  $("install-older").hidden = true;
   setStatus("Starting…");
   setProgress(0, 0);
   $("job").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -129,22 +131,72 @@ const fromFolder = (fileList) => async () => {
   return { files, source: list[0]?.webkitRelativePath.split("/")[0] ?? "folder" };
 };
 
+// What the page says and does when a conversion would replace an installed add-on. The replacement
+// gets everything the installed one saved, so older versions and other builds need a deliberate choice.
+function replacementPlan(kind, installed, meta, fromStore) {
+  const keep = "its settings, logins, and any other stored data";
+  const trust = "Only continue if you trust where this file came from.";
+  switch (kind) {
+    case "new":
+      return { status: "Converted. Nothing is installed until you click Install.", button: `Install in ${browserName}` };
+    case "upgrade":
+      return fromStore
+        ? { status: `Version ${installed.version} is installed. Installing replaces it and keeps its settings and data.`, button: `Update in ${browserName}` }
+        : {
+          status: `This file would replace ${installed.name} ${installed.version}, which is installed, and get all of its saved data.`,
+          error: true,
+          button: `Replace ${installed.name}…`,
+          warning: `This file didn't come straight from the Chrome Web Store. Installing it replaces ${installed.name} ` +
+            `and gives the new code everything ${installed.name} has saved: ${keep}. ${trust} Click "Replace anyway" to continue.`,
+        };
+    case "same-build":
+      return { status: `This is the same build of ${installed.name} ${installed.version} that's installed. Reinstalling keeps its settings and data.`, button: "Reinstall" };
+    case "unknown-build":
+      if (fromStore) return { status: `Version ${installed.version} is installed. Installing reinstalls it from the Chrome Web Store and keeps its settings and data.`, button: "Reinstall" };
+      // falls through: a same-version file Fox Sake can't match to what's installed
+    case "different-build": {
+      const what = kind === "different-build"
+        ? "isn't the same build as the one installed: its contents are different"
+        : "may not be the same build as the one installed (Fox Sake has no record of what was installed)";
+      return {
+        status: `${installed.name} ${installed.version} is installed. This file has the same version number but ${what}. It would get all of the installed add-on's saved data.`,
+        error: true,
+        button: `Replace ${installed.name}…`,
+        warning: `The version number matches, but this ${kind === "different-build" ? "isn't" : "might not be"} the build you have installed: ` +
+          `someone may have changed it, or it came from somewhere else. Installing it gives that code everything ${installed.name} has saved: ${keep}. ` +
+          `${trust} Click "Replace anyway" to continue.`,
+      };
+    }
+    case "downgrade":
+      return {
+        status: `This is version ${meta.version}, older than the ${installed.version} you have installed. Fox Sake doesn't replace a newer version ` +
+          `with an older one: older versions can have security holes that were fixed later, and this one would get all of ${installed.name}'s saved data.`,
+        error: true,
+        older: `Installing ${installed.name} ${meta.version} replaces ${installed.version} and gives the older code everything ${installed.name} has saved: ${keep}. ` +
+          `Older versions may have security holes that newer ones fixed, and someone could send you one on purpose. ` +
+          `Only do this if you know why you need this version and trust where it came from. Click "Install older version anyway" to continue.`,
+      };
+    default:
+      throw new Error(`Unknown replacement kind ${kind}`);
+  }
+}
+
 async function showResult({ xpi, meta, report, classified }, { fromStore }) {
   setProgress(false);
   $("job-title").textContent = `${meta.name} ${meta.version}`;
 
   let installed = null;
   try { installed = await browser.management.get(meta.geckoId); } catch { /* not installed */ }
-  // A local file that replaces an installed add-on inherits everything that add-on saved. Its
-  // signature checked out, but it didn't come from the store just now, so make that a deliberate choice.
-  const risky = !!installed && !fromStore;
-  if (risky) {
-    setStatus(`This file would replace ${installed.name} ${installed.version}, which is installed, and get all of its saved data.`, "error");
-  } else {
-    setStatus(installed
-      ? `Version ${installed.version} is installed. Installing replaces it and keeps its settings and data.`
-      : "Converted. Nothing is installed until you click Install.");
-  }
+  // The package fingerprint Fox Sake saved when it installed this add-on, if it's still that version.
+  const { installs = {} } = await browser.storage.local.get("installs");
+  const record = installed && installs[meta.geckoId]?.version === installed.version ? installs[meta.geckoId] : null;
+  const { kind } = checkReplacement({
+    installed: installed && { version: installed.version, sha256: record?.sha256 ?? null },
+    incoming: { version: meta.version, sha256: meta.packageSha256 },
+    fromStore,
+  });
+  const plan = replacementPlan(kind, installed, meta, fromStore);
+  setStatus(plan.status, plan.error ? "error" : "");
 
   const summary = $("job-summary");
   summary.replaceChildren();
@@ -161,11 +213,16 @@ async function showResult({ xpi, meta, report, classified }, { fromStore }) {
   const installUrl = URL.createObjectURL(new Blob([xpi], { type: "application/x-xpinstall" }));
   const saveUrl = URL.createObjectURL(new Blob([xpi], { type: "application/octet-stream" }));
   const reportUrl = URL.createObjectURL(new Blob([report], { type: "text/markdown" }));
-  current = { meta, installUrl, urls: [installUrl, saveUrl, reportUrl], confirm: risky ? installed : null };
+  current = { meta, installUrl, urls: [installUrl, saveUrl, reportUrl], confirm: plan.warning ?? null, older: plan.older ?? null };
   Object.assign($("save-xpi"), { href: saveUrl, download: `${base}.xpi` });
   Object.assign($("save-report"), { href: reportUrl, download: `${base}.report.md` });
-  $("install").textContent = risky ? `Replace ${installed.name}…` : installed ? `Update in ${browserName}` : `Install in ${browserName}`;
+  // A downgrade has no normal Install button, only the separate, clearly labeled one.
+  $("install").hidden = !!plan.older;
+  $("install").textContent = plan.button ?? "";
   $("install").disabled = false;
+  $("install-older").hidden = !plan.older;
+  $("install-older").textContent = "Install older version…";
+  $("install-older").disabled = false;
   $("report").textContent = report;
   $("job-result").hidden = false;
 
@@ -174,40 +231,70 @@ async function showResult({ xpi, meta, report, classified }, { fromStore }) {
   await browser.storage.local.set({ reports });
 }
 
-$("install").addEventListener("click", () => {
-  if (!current) return;
-  const hint = $("install-hint");
-  if (current.confirm) {
-    // First click on a risky replacement only explains; the second one installs.
-    const old = current.confirm;
-    current.confirm = null;
-    hint.className = "hint warn";
-    hint.textContent = `This file didn't come straight from the Chrome Web Store. Installing it replaces ${old.name} ` +
-      `and gives the new code everything ${old.name} has saved: its settings, logins, and any other stored data. ` +
-      `Only continue if you trust where this file came from. Click "Replace anyway" to continue.`;
-    hint.hidden = false;
-    $("install").textContent = "Replace anyway";
-    return;
-  }
+function startInstall() {
   // Synchronous on purpose: the navigation has to happen inside the click.
   location.href = current.installUrl;
+  const hint = $("install-hint");
   hint.className = "hint";
   hint.textContent = `${browserName} will ask you twice: click "Continue to Installation", then "Add". ` +
     `If it says the add-on "could not be verified", unsigned add-ons aren't allowed yet (see the note at the bottom).`;
   hint.hidden = false;
+}
+
+// First click on a risky action only explains; the second one installs.
+function warnFirst(button, text, again) {
+  const hint = $("install-hint");
+  hint.className = "hint warn";
+  hint.textContent = text;
+  hint.hidden = false;
+  button.textContent = again;
+}
+
+$("install").addEventListener("click", () => {
+  if (!current || current.older) return;
+  if (current.confirm) {
+    warnFirst($("install"), current.confirm, "Replace anyway");
+    current.confirm = null;
+    return;
+  }
+  startInstall();
 });
 
-browser.management.onInstalled.addListener((info) => {
+$("install-older").addEventListener("click", () => {
+  if (!current || !current.older) return;
+  if (!current.olderConfirmed) {
+    warnFirst($("install-older"), current.older, "Install older version anyway");
+    current.olderConfirmed = true;
+    return;
+  }
+  startInstall();
+});
+
+browser.management.onInstalled.addListener(async (info) => {
   if (current && info.id === current.meta.geckoId) {
     const hint = $("install-hint");
     hint.className = "hint ok";
     hint.textContent = `Installed ${info.name} ${info.version}.`;
     hint.hidden = false;
     $("install").disabled = true;
+    $("install-older").disabled = true;
+    // Remember which package was installed, so a later file with the same version can be checked.
+    if (info.version === current.meta.version) {
+      const { installs = {} } = await browser.storage.local.get("installs");
+      installs[info.id] = { version: info.version, sha256: current.meta.packageSha256 };
+      await browser.storage.local.set({ installs });
+    }
   }
   refreshLibrarySoon();
 });
-browser.management.onUninstalled.addListener(() => refreshLibrarySoon());
+browser.management.onUninstalled.addListener(async (info) => {
+  const { installs = {} } = await browser.storage.local.get("installs");
+  if (installs[info.id]) {
+    delete installs[info.id];
+    await browser.storage.local.set({ installs });
+  }
+  refreshLibrarySoon();
+});
 browser.management.onEnabled.addListener(() => refreshLibrarySoon());
 browser.management.onDisabled.addListener(() => refreshLibrarySoon());
 

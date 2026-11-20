@@ -30,12 +30,9 @@ test("CRX3 with a second (publisher) signature: every signature must verify", as
   assert.equal(r.chromeId, idFromKey(key.der));
 });
 
-test("CRX2: verifies the RSA/SHA-1 signature and derives the ID from the key", async () => {
-  const r = await unwrapCrx(makeCrx2(zip, key));
-  assert.equal(r.format, "crx2");
-  assert.equal(r.verified, true);
-  assert.equal(r.chromeId, idFromKey(key.der));
-  assert.ok(readZip(r.zip).has("manifest.json"));
+test("CRX2 is refused even when its SHA-1 signature is genuine (FS-6)", async () => {
+  await assert.rejects(unwrapCrx(makeCrx2(zip, key)), /old-format CRX \(CRX2/);
+  await assert.rejects(unwrapCrx(makeCrx2(zip, key, { badSignature: true })), /old-format CRX \(CRX2/);
 });
 
 test("plain ZIP passes through, unverified and without an ID", async () => {
@@ -74,10 +71,6 @@ test("CRX3 with a good signature plus a forged one is rejected", async () => {
   const forged = makeCrx3(zip, [key, publisher], { badSignature: true });
   await unwrapCrx(good);
   await assert.rejects(unwrapCrx(forged), /signature is invalid/);
-});
-
-test("forged CRX2 is rejected", async () => {
-  await assert.rejects(unwrapCrx(makeCrx2(zip, key, { badSignature: true })), /signature is invalid/);
 });
 
 test("rejects garbage, wrong versions, and lying offsets", async () => {

@@ -23,6 +23,7 @@ button, .button { display: inline-block; padding: 8px 16px; border: 1px solid va
 button:hover, .button:hover { border-color: var(--muted); }
 button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 button.primary:hover { background: var(--accent-hover); }
+button.danger { border-color: var(--bad); color: var(--bad); }
 button:disabled { opacity: 0.6; cursor: default; }
 .drop { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; padding: 16px; border: 2px dashed var(--line); border-radius: 10px; }
 .drop.over { border-color: var(--accent); }

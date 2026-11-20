@@ -4,7 +4,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync, createWrite
 import { join, resolve, basename, dirname } from "node:path";
 import { spawn } from "node:child_process";
 import { parseArgs } from "node:util";
-import { convert } from "../src/core/convert.js";
+import { convert, SOURCE_FILE } from "../src/core/convert.js";
 import { renderFindings } from "../src/core/report.js";
 import { compareVersions } from "../src/core/webstore.js";
 import { readZip } from "../src/core/archive.js";
@@ -28,6 +28,11 @@ Usage:
 
 Options:
   --force        (update) rebuild even if the version hasn't changed
+  --replace      (add, install) replace an installed extension with a file that didn't come
+                 straight from the Chrome Web Store, or with a different build of the same version
+  --allow-downgrade
+                 (add, install, update) install an older version over a newer one. Older versions
+                 can have security holes, and they get all of the installed version's data
   --no-lint      skip web-ext lint
   --fresh        (run) use a brand-new blank test profile for this run
   -h, --help     show this help
@@ -39,7 +44,7 @@ const fail = (msg) => { console.error(`\n✖ ${msg}`); process.exit(1); };
 async function main() {
   const { values: opts, positionals } = parseArgs({
     allowPositionals: true,
-    options: { force: { type: "boolean" }, "no-lint": { type: "boolean" }, fresh: { type: "boolean" }, help: { type: "boolean", short: "h" }, quiet: { type: "boolean" } },
+    options: { force: { type: "boolean" }, replace: { type: "boolean" }, "allow-downgrade": { type: "boolean" }, "no-lint": { type: "boolean" }, fresh: { type: "boolean" }, help: { type: "boolean", short: "h" }, quiet: { type: "boolean" } },
   });
   let [cmd, ...rest] = positionals;
   if (opts.help || !cmd) return say(HELP);
@@ -66,9 +71,11 @@ async function convertCmd([input], opts) {
   await doConvert(input, opts);
 }
 
+const replaceOpts = (opts, fromStore) => ({ fromStore, replace: !!opts.replace, allowDowngrade: !!opts["allow-downgrade"] });
+
 async function add([input], opts) {
-  const { xpiPath, meta } = await doConvert(input, opts);
-  await installAndWait(xpiPath, meta);
+  const { xpiPath, meta, fromStore } = await doConvert(input, opts);
+  await installAndWait(xpiPath, meta, replaceOpts(opts, fromStore));
 }
 
 function findConverted(nameOrPath) {
@@ -84,18 +91,21 @@ function findConverted(nameOrPath) {
   return hits[0] ?? null;
 }
 
-async function install([target]) {
+async function install([target], opts) {
   const e = findConverted(target);
   if (!e) fail(`Nothing converted matches "${target}". Run "foxsake list".`);
   if (!existsSync(e.xpiPath)) fail(`The file ${e.xpiPath} is gone; convert it again.`);
-  const meta = e.geckoId ? e : await readMetaFromXpi(e.xpiPath);
-  await installAndWait(e.xpiPath, meta);
+  // The version and package fingerprint come from the file itself, not from the registry.
+  const meta = { ...e, ...readMetaFromXpi(e.xpiPath) };
+  await installAndWait(e.xpiPath, meta, replaceOpts(opts, e.sourceKind === "webstore"));
 }
 
-async function readMetaFromXpi(xpiPath) {
+function readMetaFromXpi(xpiPath) {
   const files = readZip(new Uint8Array(readFileSync(xpiPath)));
   const m = JSON.parse(new TextDecoder().decode(files.get("manifest.json")));
-  return { geckoId: m.browser_specific_settings?.gecko?.id, version: m.version };
+  let packageSha256 = null;
+  try { packageSha256 = JSON.parse(new TextDecoder().decode(files.get(SOURCE_FILE))).packageSha256 ?? null; } catch { /* converted before 2.0.4 */ }
+  return { geckoId: m.browser_specific_settings?.gecko?.id, version: m.version, packageSha256 };
 }
 
 async function run([target], opts) {
@@ -180,8 +190,8 @@ async function update([target], opts) {
     const newer = compareVersions(latest, e.version) > 0;
     say(`• ${e.name}: converted ${e.version}, store has ${latest}${newer ? " → updating" : opts.force ? " → rebuilding (--force)" : " (up to date)"}`);
     if (!newer && !opts.force) continue;
-    const { xpiPath, meta } = await doConvert(e.chromeId, opts);
-    await installAndWait(xpiPath, meta);
+    const { xpiPath, meta, fromStore } = await doConvert(e.chromeId, opts);
+    await installAndWait(xpiPath, meta, replaceOpts(opts, fromStore));
     updated++;
   }
   say(updated ? `\nDone: ${updated} updated.` : "\nEverything is up to date.");

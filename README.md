@@ -14,12 +14,16 @@ browser. There's also a command-line version that does the same thing.
 
 ## Install the add-on
 
-> **Use a separate profile.** Setting `xpinstall.signatures.required` to `false` affects the whole profile,
-> not just Fox Sake. Firefox also stops checking the signatures of add-ons you already have, so any program
-> running on your computer could swap the files of, say, your password manager without Firefox noticing.
-> Keep converted extensions in their own Zen profile (open `about:profiles` and click **Create a New Profile**),
-> and keep password managers, banking, and add-ons that can control your browser or run programs in a
-> profile where signatures stay required.
+### Use a separate profile
+
+Setting `xpinstall.signatures.required` to `false` affects the whole profile, not just Fox Sake. Firefox
+also stops checking the signatures of add-ons you already have, so any program running on your computer
+could swap the files of, say, your password manager without Firefox noticing. Keep converted extensions in
+their own Zen profile (open `about:profiles` and click **Create a New Profile**), and keep password
+managers, banking, and add-ons that can control your browser or run programs in a profile where signatures
+stay required.
+
+### Steps
 
 1. Allow unsigned add-ons (in the profile you'll use for converted extensions). Converted extensions can't be signed by Mozilla, so open `about:config`,
    search for `xpinstall.signatures.required` and set it to `false`. Zen honours this pref. In Firefox,
@@ -42,7 +46,10 @@ Each extension gets the Firefox ID `<chromeId>@foxsake`, so updates keep its set
 That ID only comes from a signature Fox Sake has checked: a `.crx` with a forged or broken signature is refused,
 and unsigned `.zip` files and folders get an ID based on their contents (`local-…@foxsake`), so they can't take
 over an extension you already have. If a file you picked would replace an installed extension, Fox Sake asks
-twice, because the new file gets all of that extension's saved data.
+twice, because the new file gets all of that extension's saved data. The same goes for a file with the same
+version number as the installed one but different contents. Fox Sake never installs an older version over a
+newer one unless you pick **Install older version** (older versions can have security holes), and it
+refuses old-format CRX2 files, which Chrome stopped accepting in 2019.
 
 **Privacy.** Fox Sake only contacts Google's update servers (`clients2.google.com` and
 `clients2.googleusercontent.com`): to download the extension you picked, and to ask for the latest version
@@ -68,6 +75,10 @@ foxsake list                # converted extensions, installed versions, shims us
 foxsake update [name]       # rebuild + reinstall anything with a newer store version
 foxsake run <name>          # load it in a separate test profile, console saved to out/logs/
 ```
+
+Like the add-on, the CLI won't replace an installed extension with an older version, a different build of
+the same version, or a file that didn't come straight from the store. Add `--allow-downgrade` or `--replace`
+to do it anyway.
 
 ## What gets converted
 

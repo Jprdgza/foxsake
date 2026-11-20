@@ -1,4 +1,4 @@
-// Test helpers: build synthetic CRX2/CRX3 files around a ZIP, exactly as Chrome lays them out.
+// Test helpers: build synthetic CRX3 (and refused CRX2) files around a ZIP, exactly as Chrome lays them out.
 import { generateKeyPairSync, createHash, sign } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";

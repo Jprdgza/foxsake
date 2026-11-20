@@ -25,13 +25,13 @@ export function parseExtensionId(input) {
 /** URL that 302-redirects to the CRX file. */
 export function crxDownloadUrl(id, chromeVersion = DEFAULT_CHROME_VERSION) {
   const x = encodeURIComponent(`id=${id}&uc`);
-  return `https://clients2.google.com/service/update2/crx?response=redirect&prodversion=${chromeVersion}&acceptformat=crx2,crx3&x=${x}`;
+  return `https://clients2.google.com/service/update2/crx?response=redirect&prodversion=${chromeVersion}&acceptformat=crx3&x=${x}`;
 }
 
 /** URL that returns XML describing the latest version (no download). */
 export function updateCheckUrl(id, chromeVersion = DEFAULT_CHROME_VERSION) {
   const x = encodeURIComponent(`id=${id}&uc`);
-  return `https://clients2.google.com/service/update2/crx?prodversion=${chromeVersion}&acceptformat=crx2,crx3&x=${x}`;
+  return `https://clients2.google.com/service/update2/crx?prodversion=${chromeVersion}&acceptformat=crx3&x=${x}`;
 }
 
 /** Extracts {version, codebase, status} from the update-check XML response. */

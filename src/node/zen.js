@@ -5,6 +5,8 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { execFileSync, spawn } from "node:child_process";
+import { readZip } from "../core/archive.js";
+import { SOURCE_FILE } from "../core/convert.js";
 
 const SUPPORT_DIR = join(homedir(), "Library", "Application Support", "zen");
 
@@ -94,6 +96,21 @@ export function isZenRunning() {
 export function openInZen(xpiPath) {
   const child = spawn(zenBinary(), ["--new-tab", pathToFileURL(xpiPath).href], { detached: true, stdio: "ignore" });
   child.unref();
+}
+
+/**
+ * The package fingerprint Fox Sake recorded inside an installed add-on (null if it has none, e.g.
+ * converted by a version before 2.0.4). Only used to tell whether a same-version replacement is the
+ * same build.
+ */
+export function installedPackageSha256(id, profileDir = zenDefaultProfile()) {
+  try {
+    const files = readZip(new Uint8Array(readFileSync(join(profileDir, "extensions", `${id}.xpi`))));
+    const sha = JSON.parse(new TextDecoder().decode(files.get(SOURCE_FILE))).packageSha256;
+    return typeof sha === "string" && /^[0-9a-f]{64}$/.test(sha) ? sha : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Modification time of the installed add-on file (changes on every reinstall). */

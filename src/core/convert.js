@@ -11,13 +11,15 @@ import { classifyFindings, renderReport } from "./report.js";
 export const FOXSAKE_VERSION = "2.0.3";
 
 /**
- * Opens a package and returns {files, manifest, chromeId, localId, format} without changing anything.
+ * Opens a package and returns {files, manifest, chromeId, localId, format, packageSha256} without changing anything.
  *
  * The Chrome ID decides which installed add-on (and whose saved data) a conversion replaces, so it
  * only comes from a verified signature. `givenId` is the ID the user asked the Web Store for: the
  * download must be signed with that extension's key. Unsigned local packages have no Chrome ID; they
  * get `localId`, derived from their bytes, so one local file can't take over another's ID.
  * `manifest.key` is ignored: it's a public key anyone can copy.
+ * `packageSha256` fingerprints the extension's own files (the ZIP inside a CRX), so two downloads of
+ * the same release match even if Google re-signs it.
  */
 export async function openPackage(bytes, { chromeId: givenId } = {}) {
   if (!(bytes instanceof Uint8Array)) bytes = new Uint8Array(bytes);
@@ -46,15 +48,17 @@ export async function openPackage(bytes, { chromeId: givenId } = {}) {
   }
 
   const chromeId = crx.chromeId;
-  const localId = chromeId ? null : `local-${await shortHash(bytes)}`;
-  return { files, manifest, chromeId, localId, format: crx.format };
+  const localId = chromeId ? null : `local-${(await sha256Hex(bytes)).slice(0, 16)}`;
+  return { files, manifest, chromeId, localId, format: crx.format, packageSha256: await sha256Hex(crx.zip) };
 }
 
-/** First 16 hex characters of SHA-256(bytes). */
-async function shortHash(bytes) {
+async function sha256Hex(bytes) {
   const d = new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256", bytes));
-  return [...d.subarray(0, 8)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  return [...d].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
+
+/** Where a converted add-on records which package it was built from (read back by the CLI). */
+export const SOURCE_FILE = "foxsake/source.json";
 
 /** Scan only: what would need patching. */
 export async function scanPackage(bytes, opts = {}) {
@@ -72,7 +76,7 @@ export async function scanPackage(bytes, opts = {}) {
  */
 export async function convert(bytes, opts = {}) {
   const support = createSupport(opts.targetVersion ?? DEFAULT_TARGET);
-  const { files, manifest: original, chromeId, localId, format } = await openPackage(bytes, opts);
+  const { files, manifest: original, chromeId, localId, format, packageSha256 } = await openPackage(bytes, opts);
   const name = displayName(original, files);
   const shortName = original.short_name ? displayName({ ...original, name: original.short_name }, files) : null;
   const removedFiles = [];
@@ -81,7 +85,7 @@ export async function convert(bytes, opts = {}) {
   for (const p of [...files.keys()]) {
     if (p.startsWith("_metadata/")) { files.delete(p); removedFiles.push(p); }
   }
-  if (files.has("foxsake/background-shim.js")) throw new Error("Package already contains Fox Sake shims (was it converted twice?).");
+  if (files.has("foxsake/background-shim.js") || files.has(SOURCE_FILE)) throw new Error("Package already contains Fox Sake shims (was it converted twice?).");
 
   const findings = scanExtension(files, { chromeId, support });
   const slug = slugify(shortName && !shortName.startsWith("__MSG_") && shortName.length < name.length ? shortName : name);
@@ -91,6 +95,7 @@ export async function convert(bytes, opts = {}) {
 
   const missing = checkReferencedFiles(manifest, files);
   files.set("manifest.json", toBytes(JSON.stringify(manifest, null, 2)));
+  files.set(SOURCE_FILE, toBytes(JSON.stringify({ packageSha256, chromeId, version: manifest.version }, null, 2)));
   const xpi = writeZip(files);
 
   const classified = classifyFindings(findings, shimResult, rewritten.background);
@@ -101,6 +106,7 @@ export async function convert(bytes, opts = {}) {
     chromeId,
     geckoId: rewritten.geckoId,
     format,
+    packageSha256,
     source: opts.source ?? null,
     shims: shimResult.applied.map((s) => s.id),
     unsupported: classified.filter((f) => f.status === "unsupported").map((f) => f.title),

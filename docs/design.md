@@ -15,7 +15,7 @@ To open the install prompt, Fox Sake runs `zen --new-tab file:///…/x.xpi`. On 
 ```
 input (URL | ID | .crx | .zip | dir)
   → download (Google update service, redirect=crx)
-  → unwrap CRX2/CRX3 → read ZIP
+  → unwrap CRX3 (CRX2 is refused) → read ZIP
   → scan JS for Chrome-only usage
   → rewrite manifest (BCD-driven)
   → inject shims + rewrite code
@@ -28,7 +28,9 @@ Everything up to "write .xpi" lives in `src/core/` and has no Node dependencies.
 ## CRX parsing
 
 CRX3: `"Cr24"`, uint32 version, uint32 header length, protobuf `CrxFileHeader`, then the ZIP.
-CRX2: `"Cr24"`, version, key length, signature length, key, signature, then the ZIP.
+CRX2 (version 2) is refused outright. Its signatures use SHA-1, and Chrome stopped installing it in 2019,
+so a CRX2 file is always an old package from somewhere other than the store. The download URLs ask Google
+for CRX3 only.
 The parser bounds-checks every offset and requires the payload to start with a ZIP signature.
 ZIP entries with `..` or absolute paths are rejected, and entry count and total size are capped.
 Fox Sake never executes downloaded code.
@@ -40,7 +42,6 @@ Signatures are checked with WebCrypto, so the CLI and the add-on run the same co
   (field 3, DER signatures). Every proof must verify, as in Chrome, and `crx_id` must be the
   SHA-256 prefix of one of the keys that signed. Store downloads carry two proofs: the developer's key
   and the Web Store's publisher key.
-- CRX2 signs the ZIP with RSA PKCS#1 v1.5/SHA-1.
 
 ## Add-on IDs
 
@@ -53,8 +54,29 @@ The Firefox ID decides which installed add-on a conversion replaces, and so whos
   is ignored because it's a public key anyone can copy. A changed file gets a new ID, so it installs
   alongside the old one instead of taking over its data.
 
-When a local file would replace an installed add-on, the add-on page asks for a second click and says
-that the file gets all of that extension's saved data.
+## Replacing an installed add-on
+
+A valid signature only proves who made a package, not that it's the release you should have. An old
+release with a known hole is still genuinely signed, and installing it over the current one gives it all of
+that extension's data. `checkReplacement()` (`src/core/replace.js`) decides what happens, and the add-on
+page and the CLI both use it:
+
+| Incoming vs. installed | Add-on page | CLI |
+|---|---|---|
+| Not installed | Install | installs |
+| Newer, fresh store download | Update | installs |
+| Newer, local file | "Replace …" asks twice | needs `--replace` |
+| Same version, same build | Reinstall | installs |
+| Same version, different build | "Replace …" asks twice, says it isn't the same build | needs `--replace` |
+| Same version, installed build unknown | store: Reinstall; file: asks twice | store: installs; file: needs `--replace` |
+| Older (any source, the store too) | no Install button; a separate "Install older version…" asks twice | needs `--allow-downgrade` |
+
+Versions are compared numerically (`1.2.10` > `1.2.9`). The "build" is `packageSha256`, the SHA-256 of
+the extension's ZIP (inside a CRX, the ZIP after the header), so a re-signed copy of the same files still
+matches. Each converted add-on carries it in `foxsake/source.json`; the CLI reads it back from
+`<profile>/extensions/<id>.xpi`. The add-on page can't read other add-ons' files, so it saves
+`{version, sha256}` in `storage.local.installs` when `management.onInstalled` reports an install it
+started, and forgets it on uninstall. Add-ons converted before 2.0.4 have no record ("unknown").
 
 ## Manifest rewriting
 
@@ -149,7 +171,9 @@ bundled copy). The flow:
   that survives restarts.
 - `management` lists installed add-ons and reports when an install finishes. The page only shows the ones
   this Fox Sake converted (IDs kept in `storage.local.reports`), not every `*@foxsake` ID. A daily alarm
-  asks Google's update service for the latest versions and sets a badge.
+  asks Google's update service for the latest versions and sets a badge. Update buttons only appear for
+  newer versions, and a store download is still checked against the installed version, so the store can't
+  roll an extension back.
 - The store is a single-page app that keeps earlier pages in the DOM, hidden. The content script only
   anchors the button next to visible elements and re-places it when its spot gets hidden.
 - Host access to Google's servers can be missing even though it's in `host_permissions` (it wasn't granted

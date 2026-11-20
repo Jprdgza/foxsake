@@ -2,8 +2,7 @@
 // Works in Node and in the browser (no Node-only APIs).
 //
 // CRX3 layout: "Cr24" | uint32 LE version=3 | uint32 LE header length | protobuf CrxFileHeader | ZIP
-// CRX2 layout: "Cr24" | uint32 LE version=2 | uint32 LE pubkey length | uint32 LE signature length
-//              | public key | signature | ZIP
+// CRX2 (version 2, signed with SHA-1) is refused, as Chrome has done since 2019.
 // All offsets are bounds-checked: downloaded files are untrusted data.
 
 const MAGIC = [0x43, 0x72, 0x32, 0x34]; // "Cr24"
@@ -152,7 +151,8 @@ function ecdsaDerToRaw(der) {
   return raw;
 }
 
-async function verifyProof({ type, key, signature }, data, hash = "SHA-256") {
+async function verifyProof({ type, key, signature }, data) {
+  const hash = "SHA-256";
   try {
     if (type === "rsa") {
       const k = await subtle().importKey("spki", key, { name: "RSASSA-PKCS1-v1_5", hash }, false, ["verify"]);
@@ -166,12 +166,12 @@ async function verifyProof({ type, key, signature }, data, hash = "SHA-256") {
 }
 
 /**
- * Unwraps a CRX2/CRX3 (or passes through a plain ZIP) and checks its signatures.
+ * Unwraps a CRX3 (or passes through a plain ZIP) and checks its signatures. CRX2 is refused.
  * A package is rejected if any signature in it is invalid. `chromeId` is only set when it comes
  * from a public key whose signature over this exact package verifies (`verified: true`);
  * anything else (plain ZIPs, CRX3 files without a crx_id) has `chromeId: null`.
  * @param {Uint8Array} bytes
- * @returns {Promise<{format: "crx3"|"crx2"|"zip", zip: Uint8Array, chromeId: string|null, publicKey: Uint8Array|null, verified: boolean}>}
+ * @returns {Promise<{format: "crx3"|"zip", zip: Uint8Array, chromeId: string|null, publicKey: Uint8Array|null, verified: boolean}>}
  */
 export async function unwrapCrx(bytes) {
   if (!(bytes instanceof Uint8Array)) bytes = new Uint8Array(bytes);
@@ -209,26 +209,15 @@ export async function unwrapCrx(bytes) {
       chromeId = crxId;
     }
   } else if (version === 2) {
-    const keyLen = u32(bytes, 8);
-    const sigLen = u32(bytes, 12);
-    if (keyLen > MAX_HEADER || sigLen > MAX_HEADER) throw new CrxError("CRX2 key/signature length is implausibly large.");
-    const zipStart = 16 + keyLen + sigLen;
-    if (zipStart > bytes.length) throw new CrxError("CRX2 header lengths point past the end of the file.");
-    zip = bytes.subarray(zipStart);
-    checkZip(zip);
-    const key = bytes.slice(16, 16 + keyLen);
-    const signature = bytes.slice(16 + keyLen, zipStart);
-    // CRX2: RSA PKCS#1 v1.5 with SHA-1 over the ZIP.
-    if (!(await verifyProof({ type: "rsa", key, signature }, zip, "SHA-1"))) {
-      throw new CrxError("This CRX's signature is invalid: the file was modified or forged after it was signed.");
-    }
-    publicKey = key;
-    chromeId = await chromeIdFromPublicKey(key);
+    // CRX2 signatures use SHA-1, which can be forged with enough money. Chrome stopped installing
+    // CRX2 files in 2019, so anything in this format is an old package from somewhere other than the store.
+    throw new CrxError("This is an old-format CRX (CRX2, signed with SHA-1). Chrome stopped accepting this format in 2019, " +
+      "so it can't have come from the Chrome Web Store recently. Fox Sake doesn't convert it.");
   } else {
-    throw new CrxError(`Unsupported CRX version ${version} (only 2 and 3 exist).`);
+    throw new CrxError(`Unsupported CRX version ${version} (Fox Sake only reads CRX3).`);
   }
 
-  return { format: version === 3 ? "crx3" : "crx2", zip, chromeId, publicKey, verified: !!chromeId };
+  return { format: "crx3", zip, chromeId, publicKey, verified: !!chromeId };
 }
 
 function checkZip(zip) {
