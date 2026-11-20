@@ -74,6 +74,21 @@ export async function saveId(meta) {
   await browser.storage.local.set({ ids });
 }
 
+// --- Permissions an update adds -----------------------------------------------------------------
+
+// Permissions the new version asks for that the installed one doesn't have. Compared with what the
+// installed version declared when Fox Sake installed it; without that record, with what the browser
+// says it has now (which doesn't include optional permissions that were never granted, so those are
+// left out of the comparison).
+export function addedPermissions(next, declaredBefore, installed) {
+  if (Array.isArray(declaredBefore)) {
+    const before = new Set(declaredBefore);
+    return next.filter((p) => !before.has(p) && !before.has(`${p} (optional)`));
+  }
+  const before = new Set([...(installed.permissions ?? []), ...(installed.hostPermissions ?? [])]);
+  return next.filter((p) => !p.endsWith(" (optional)") && !before.has(p));
+}
+
 // --- Replacements Fox Sake didn't make -----------------------------------------------------------
 // With signing off, any .xpi that carries a converted add-on's ID installs as an update of it and gets
 // its saved data. Fox Sake notes each install it starts (a short-lived "pending" token) and the version

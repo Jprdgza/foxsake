@@ -65,7 +65,7 @@ test("convert: a store extension gets a random ID, and its next update reuses it
   assert.equal(legacy.meta.geckoId, `${first.meta.idBase}@foxsake`, "an add-on installed before 2.0.5 keeps its ID");
 });
 
-test("declaredPermissions lists everything a manifest asks for", () => {
+test("declaredPermissions lists everything a manifest asks for (FS-9)", () => {
   assert.deepEqual(declaredPermissions({
     permissions: ["storage", "cookies"], host_permissions: ["<all_urls>"],
     optional_permissions: ["tabs", "storage"], optional_host_permissions: ["https://a.example/*"],
@@ -83,6 +83,9 @@ test("CLI keeps the same ID across runs in out/ids.json", async () => {
     saveId({ newId: false, idBase: "local-0123456789abcdef", geckoId: "local-0123456789abcdef@foxsake" });
     assert.deepEqual(loadIds(), { [A]: `${A}-0011223344556677@foxsake` });
     assert.match(readFileSync(join(out, "ids.json"), "utf8"), /0011223344556677/);
+    const { addedPermissions } = await import("../src/node/pipeline.js");
+    assert.deepEqual(addedPermissions(["<all_urls>", "cookies", "storage"], ["storage", "cookies (optional)"]), ["<all_urls>"]);
+    assert.deepEqual(addedPermissions(["cookies"], null), []);
   } finally {
     delete process.env.FOXSAKE_OUT;
     rmSync(out, { recursive: true, force: true });

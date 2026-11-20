@@ -9,7 +9,7 @@ import { downloadCrx, readLocal } from "./fetch-crx.js";
 import { lintXpi, renderLint } from "./lint.js";
 import { OUT, ORIGINALS, ensureDirs, recordConversion, loadIds, saveId } from "./library.js";
 import { knownIds } from "../core/ids.js";
-import { zenGeckoVersion, installedAddons, openInZen, addonFileMtime, installedPackageSha256 } from "./zen.js";
+import { zenGeckoVersion, installedAddons, openInZen, addonFileMtime, installedPackageSha256, installedPermissions } from "./zen.js";
 import { checkReplacement } from "../core/replace.js";
 
 /** Where progress messages go (printed by default; tests can redirect them). */
@@ -124,12 +124,21 @@ export function assertReplaceable(meta, installed, { fromStore = false, allowDow
   return check;
 }
 
+/** Permissions in `next` that `before` (the installed version's, or null if unknown) doesn't have. */
+export function addedPermissions(next, before) {
+  if (!before) return [];
+  const had = new Set(before);
+  return next.filter((p) => !had.has(p) && !had.has(`${p} (optional)`));
+}
+
 export async function installAndWait(xpiPath, meta, opts = {}) {
   assertInstallable(meta);
   const before = installedAddons().get(meta.geckoId);
   const installedSha = before && installedPackageSha256(meta.geckoId);
   const check = assertReplaceable(meta, before ? { version: before.version, sha256: installedSha } : null, opts);
   if (check.kind === "downgrade") say(`⚠ Installing the older ${meta.version} over ${before.version} (--allow-downgrade).`);
+  const added = before && meta.permissions ? addedPermissions(meta.permissions, installedPermissions(meta.geckoId)) : [];
+  if (added.length) say(`⚠ This update adds: ${added.join(", ")}`);
   const beforeMtime = addonFileMtime(meta.geckoId);
   say(`\n🦊 Opening Zen's install prompt. In Zen, click "Add" (and "Okay" if asked).`);
   if (before && check.kind !== "downgrade") say(`  (Replacing ${before.version} with ${meta.version}. Saved data and logins are kept: same Firefox ID.)`);

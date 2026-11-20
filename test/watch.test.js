@@ -1,4 +1,5 @@
 // FS-8: the add-on notices when a converted extension is replaced by a file it didn't install.
+// FS-9: it shows which permissions an update adds.
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, cpSync, readdirSync } from "node:fs";
@@ -124,4 +125,13 @@ test("the library and update checks understand both ID forms", async () => {
     abcdefghijklmnopabcdefghijklmnop: ID,
     ponmlkjihgfedcbaponmlkjihgfedcba: legacy,
   });
+});
+
+test("an update shows the permissions it adds (FS-9)", () => {
+  const next = ["<all_urls>", "cookies", "storage", "tabs (optional)"];
+  assert.deepEqual(lib.addedPermissions(next, ["storage", "tabs (optional)"], null), ["<all_urls>", "cookies"]);
+  assert.deepEqual(lib.addedPermissions(["storage"], ["storage (optional)"], null), [], "optional → required isn't new");
+  // No record of what the installed version declared: compare with what the browser reports it has.
+  const installed = { permissions: ["storage", "cookies"], hostPermissions: [] };
+  assert.deepEqual(lib.addedPermissions(next, null, installed), ["<all_urls>"]);
 });

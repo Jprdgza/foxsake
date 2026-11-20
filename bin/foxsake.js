@@ -4,7 +4,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync, createWrite
 import { join, resolve, basename, dirname } from "node:path";
 import { spawn } from "node:child_process";
 import { parseArgs } from "node:util";
-import { convert, SOURCE_FILE } from "../src/core/convert.js";
+import { convert, SOURCE_FILE, declaredPermissions } from "../src/core/convert.js";
 import { renderFindings } from "../src/core/report.js";
 import { compareVersions } from "../src/core/webstore.js";
 import { readZip } from "../src/core/archive.js";
@@ -105,7 +105,7 @@ function readMetaFromXpi(xpiPath) {
   const m = JSON.parse(new TextDecoder().decode(files.get("manifest.json")));
   let packageSha256 = null;
   try { packageSha256 = JSON.parse(new TextDecoder().decode(files.get(SOURCE_FILE))).packageSha256 ?? null; } catch { /* converted before 2.0.4 */ }
-  return { geckoId: m.browser_specific_settings?.gecko?.id, version: m.version, packageSha256 };
+  return { geckoId: m.browser_specific_settings?.gecko?.id, version: m.version, packageSha256, permissions: declaredPermissions(m) };
 }
 
 async function run([target], opts) {

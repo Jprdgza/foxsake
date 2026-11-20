@@ -200,6 +200,11 @@ bundled copy). The flow:
   asks Google's update service for the latest versions and sets a badge. Update buttons only appear for
   newer versions, and a store download is still checked against the installed version, so the store can't
   roll an extension back.
+- When a conversion would update an installed add-on, the page shows the permissions it adds in red
+  ("This update adds: `<all_urls>`, `cookies`"): it compares every permission the new manifest declares
+  (required and optional, API and host) with what the installed version declared when Fox Sake installed it,
+  or, without that record, with what the browser reports it has now. The CLI prints the same line, reading
+  the installed version's manifest from the profile.
 - The page also lists other add-ons in the profile that aren't Fox Sake conversions and either use
   `nativeMessaging` or have host access to every site (`<all_urls>`, `*://*/*`), with a notice to use a
   separate profile: with signing off, their files could be swapped without the browser noticing. It only

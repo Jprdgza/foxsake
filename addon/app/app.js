@@ -6,7 +6,7 @@ import { downloadCrx, parseExtensionId } from "../lib/core/webstore.js";
 import { safeFilePart } from "../lib/core/archive.js";
 import { checkReplacement } from "../lib/core/replace.js";
 import {
-  convertedAddons, checkUpdates, sharedProfileRisks, idsForConversion, saveId,
+  convertedAddons, checkUpdates, sharedProfileRisks, idsForConversion, saveId, addedPermissions,
   expectInstall, noteInstalled, checkReplacements, replacedAddons, trustReplacement, forgetAddon,
 } from "./library.js";
 
@@ -201,6 +201,9 @@ async function showResult({ xpi, meta, report, classified }, { fromStore }) {
   });
   const plan = replacementPlan(kind, installed, meta, fromStore);
   setStatus(plan.status, plan.error ? "error" : "");
+  const added = installed ? addedPermissions(meta.permissions, record?.permissions, installed) : [];
+  $("perm-added").hidden = !added.length;
+  $("perm-added").textContent = added.length ? `This update adds: ${added.join(", ")}` : "";
 
   const summary = $("job-summary");
   summary.replaceChildren();

@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { execFileSync, spawn } from "node:child_process";
 import { readZip } from "../core/archive.js";
-import { SOURCE_FILE } from "../core/convert.js";
+import { SOURCE_FILE, declaredPermissions } from "../core/convert.js";
 
 const SUPPORT_DIR = join(homedir(), "Library", "Application Support", "zen");
 
@@ -108,6 +108,16 @@ export function installedPackageSha256(id, profileDir = zenDefaultProfile()) {
     const files = readZip(new Uint8Array(readFileSync(join(profileDir, "extensions", `${id}.xpi`))));
     const sha = JSON.parse(new TextDecoder().decode(files.get(SOURCE_FILE))).packageSha256;
     return typeof sha === "string" && /^[0-9a-f]{64}$/.test(sha) ? sha : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Everything the installed version of an add-on declares (see declaredPermissions), or null. */
+export function installedPermissions(id, profileDir = zenDefaultProfile()) {
+  try {
+    const files = readZip(new Uint8Array(readFileSync(join(profileDir, "extensions", `${id}.xpi`))));
+    return declaredPermissions(JSON.parse(new TextDecoder().decode(files.get("manifest.json"))));
   } catch {
     return null;
   }
