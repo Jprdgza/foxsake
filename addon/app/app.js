@@ -5,7 +5,7 @@
 import { downloadCrx, parseExtensionId } from "../lib/core/webstore.js";
 import { safeFilePart } from "../lib/core/archive.js";
 import { checkReplacement } from "../lib/core/replace.js";
-import { convertedAddons, checkUpdates } from "./library.js";
+import { convertedAddons, checkUpdates, sharedProfileRisks } from "./library.js";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, props = {}, ...kids) => {
@@ -301,7 +301,8 @@ browser.management.onDisabled.addListener(() => refreshLibrarySoon());
 // onInstalled can fire before management.getAll() lists the new add-on, so refresh twice.
 function refreshLibrarySoon() {
   renderLibrary();
-  setTimeout(renderLibrary, 1000);
+  renderSharedProfile();
+  setTimeout(() => { renderLibrary(); renderSharedProfile(); }, 1000);
 }
 
 // --- inputs -----------------------------------------------------------------------------------
@@ -384,6 +385,22 @@ async function renderLibrary() {
     : "";
 }
 
+// Other add-ons in this profile that could do real damage if their files were swapped. With signing
+// off, Zen no longer checks them. Read-only: Fox Sake never disables or changes them.
+let sharedSeq = 0;
+async function renderSharedProfile() {
+  const seq = ++sharedSeq;
+  const { risky, convertedInstalled } = await sharedProfileRisks();
+  if (seq !== sharedSeq) return;
+  $("shared-profile").hidden = !risky.length;
+  $("shared-profile-text").textContent = convertedInstalled
+    ? `Signing is off in this profile, so these add-ons can be modified without ${browserName} noticing. Use a separate profile for converted extensions.`
+    : `Converted extensions need signing turned off, and that applies to the whole profile: these add-ons could then be modified without ${browserName} noticing. Use a separate profile for converted extensions.`;
+  $("shared-profile-list").replaceChildren(...risky.map((a) => el("li", {},
+    el("span", { className: "name", textContent: a.name + (a.enabled ? "" : " (disabled)") }),
+    el("span", { className: "why", textContent: a.reasons.join(", ") }))));
+}
+
 $("check-updates").addEventListener("click", async () => {
   await askForAccess();
   checkAccess();
@@ -406,11 +423,13 @@ $("check-updates").addEventListener("click", async () => {
 browser.runtime.getBrowserInfo().then((i) => {
   // Zen reports itself to add-ons as "Firefox" plus a `zen` field with its own version.
   browserName = i.zen ? "Zen" : i.name || "Firefox";
+  renderSharedProfile();
   const version = i.zen?.version ?? i.version;
   $("browser").textContent = `${browserName} ${version}${geckoVersion ? ` · engine ${geckoVersion}` : ""}`;
 }).catch(() => {});
 
 renderLibrary();
+renderSharedProfile();
 checkAccess();
 
 const wanted = /^#add=([a-p]{32})$/.exec(location.hash);

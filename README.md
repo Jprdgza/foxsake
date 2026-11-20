@@ -21,7 +21,7 @@ also stops checking the signatures of add-ons you already have, so any program r
 could swap the files of, say, your password manager without Firefox noticing. Keep converted extensions in
 their own Zen profile (open `about:profiles` and click **Create a New Profile**), and keep password
 managers, banking, and add-ons that can control your browser or run programs in a profile where signatures
-stay required.
+stay required. Fox Sake's page lists the add-ons in its profile that this applies to.
 
 ### Steps
 

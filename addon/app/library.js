@@ -1,4 +1,5 @@
-// Converted extensions installed in this browser, and update checks against the Chrome Web Store.
+// Converted extensions installed in this browser, update checks against the Chrome Web Store, and
+// other add-ons in the same profile worth warning about.
 // Only add-ons this Fox Sake converted count: their IDs are the keys of storage.local "reports",
 // written when a conversion finishes. Anything else that happens to use an @foxsake ID (a sideloaded
 // add-on, or one converted with the command-line version) isn't listed or offered updates.
@@ -31,4 +32,30 @@ export async function checkUpdates() {
   await browser.action.setBadgeText({ text: n ? String(n) : "" });
   await browser.action.setBadgeBackgroundColor({ color: "#ff7139" });
   return updates;
+}
+
+// Host permissions that cover every website (any scheme, any host).
+const ALL_SITES = /^(<all_urls>|(\*|https?|wss?|ftp|file):\/\/\*\/.*)$/;
+
+/**
+ * Installed add-ons that Fox Sake didn't convert and that would be valuable to tamper with: they can
+ * talk to programs on the computer (nativeMessaging) or read and change every website. With signing
+ * off, the browser no longer notices if their files are swapped. Read-only: nothing is changed.
+ * `convertedInstalled` says whether any Fox Sake conversion is installed (which means signing is off).
+ */
+export async function sharedProfileRisks() {
+  const [all, { reports = {} }] = await Promise.all([browser.management.getAll(), browser.storage.local.get("reports")]);
+  const ours = new Set(Object.keys(reports));
+  const others = all.filter((a) => a.type === "extension" && a.id !== OWN_ID);
+  const risky = others
+    .filter((a) => !ours.has(a.id))
+    .map((a) => {
+      const reasons = [];
+      if ((a.permissions ?? []).includes("nativeMessaging")) reasons.push("talks to programs on your computer");
+      if ((a.hostPermissions ?? []).some((p) => ALL_SITES.test(p))) reasons.push("can read and change all websites");
+      return { id: a.id, name: a.name, enabled: a.enabled, reasons };
+    })
+    .filter((a) => a.reasons.length)
+    .sort((a, b) => a.name.localeCompare(b.name));
+  return { risky, convertedInstalled: others.some((a) => ours.has(a.id)) };
 }

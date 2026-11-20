@@ -174,6 +174,10 @@ bundled copy). The flow:
   asks Google's update service for the latest versions and sets a badge. Update buttons only appear for
   newer versions, and a store download is still checked against the installed version, so the store can't
   roll an extension back.
+- The page also lists other add-ons in the profile that aren't Fox Sake conversions and either use
+  `nativeMessaging` or have host access to every site (`<all_urls>`, `*://*/*`), with a notice to use a
+  separate profile: with signing off, their files could be swapped without the browser noticing. It only
+  reads `management.getAll()`; it never disables or changes other add-ons.
 - The store is a single-page app that keeps earlier pages in the DOM, hidden. The content script only
   anchors the button next to visible elements and re-places it when its spot gets hidden.
 - Host access to Google's servers can be missing even though it's in `host_permissions` (it wasn't granted

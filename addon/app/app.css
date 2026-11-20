@@ -44,6 +44,7 @@ pre { max-height: 420px; overflow: auto; padding: 12px; background: var(--bg); b
 .library li { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
 .library .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .library .ver { color: var(--muted); font-variant-numeric: tabular-nums; }
+.library .why { color: var(--muted); font-size: 13px; text-align: right; }
 .note p { margin: 8px 0; }
 .warn-card { border-color: var(--accent); }
 .warn-card p { margin: 0 0 12px; }

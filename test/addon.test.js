@@ -66,3 +66,39 @@ test("the library only lists add-ons this Fox Sake converted (FS-5)", async () =
     delete globalThis.browser;
   }
 });
+
+test("the converter page lists other add-ons worth protecting, read-only (FS-7)", async () => {
+  execFileSync(process.execPath, [join(ROOT, "scripts", "build-addon.js")], { stdio: "pipe" });
+  const converted = "abcdefghijklmnopabcdefghijklmnop@foxsake";
+  const calls = [];
+  const management = new Proxy({
+    getAll: async () => [
+      { id: "pw@example", type: "extension", name: "Password Manager", enabled: true, permissions: ["nativeMessaging", "storage"], hostPermissions: [] },
+      { id: "bridge@example", type: "extension", name: "AI Bridge", enabled: false, permissions: [], hostPermissions: ["<all_urls>"] },
+      { id: "wide@example", type: "extension", name: "Wide", enabled: true, permissions: [], hostPermissions: ["*://*/*"] },
+      { id: "narrow@example", type: "extension", name: "Narrow", enabled: true, permissions: ["tabs"], hostPermissions: ["https://example.com/*", "*://*.example.com/*"] },
+      { id: converted, type: "extension", name: "Converted", enabled: true, permissions: ["nativeMessaging"], hostPermissions: ["<all_urls>"] },
+      { id: "button@foxsake", type: "extension", name: "Fox Sake", enabled: true, permissions: [], hostPermissions: [] },
+      { id: "theme@example", type: "theme", name: "Theme", enabled: true, permissions: [], hostPermissions: ["<all_urls>"] },
+    ],
+  }, { get: (t, k) => { calls.push(k); return t[k]; } });
+  globalThis.browser = { management, storage: { local: { get: async () => ({ reports: { [converted]: {} } }) } } };
+  try {
+    const { sharedProfileRisks } = await import(join(ROOT, "out", "addon", "app", "library.js") + "?fs7");
+    const { risky, convertedInstalled } = await sharedProfileRisks();
+    assert.deepEqual(risky.map((a) => a.id), ["bridge@example", "pw@example", "wide@example"]);
+    assert.deepEqual(risky.find((a) => a.id === "pw@example").reasons, ["talks to programs on your computer"]);
+    assert.deepEqual(risky.find((a) => a.id === "bridge@example").reasons, ["can read and change all websites"]);
+    assert.equal(convertedInstalled, true);
+    assert.deepEqual([...new Set(calls)], ["getAll"], "only reads; never calls setEnabled or uninstall");
+  } finally {
+    delete globalThis.browser;
+  }
+});
+
+test("the converter page never changes other add-ons", () => {
+  for (const f of ["background.js", "app/app.js", "app/library.js"]) {
+    const src = readFileSync(join(ROOT, "addon", f), "utf8");
+    assert.doesNotMatch(src, /management\.(setEnabled|uninstall)\b/, f);
+  }
+});
