@@ -3,6 +3,31 @@
 Notable changes to Fox Sake. Versions follow [semver](https://semver.org). Since 2.0.0 the add-on
 and the CLI share one version number.
 
+## 2.0.4 — 2026-11-19
+
+Security fixes from a second review.
+
+### Security
+
+- **No more downgrades by default.** Fox Sake won't install an older version over a newer one, even when the
+  older one is genuinely signed or comes from the Chrome Web Store: old releases can have security holes,
+  and the replacement gets all of the installed extension's data. The add-on page has a separate
+  **Install older version** button that asks twice; the CLI needs `--allow-downgrade`.
+- **Same version, different contents gets a warning.** If a file has the installed version number but isn't
+  the same build, the page says so and asks twice; the CLI needs `--replace`. Converted add-ons now record
+  which package they were built from (`foxsake/source.json`).
+- **CRX2 files are refused.** They're signed with SHA-1, and Chrome stopped accepting them in 2019.
+- **The converter page warns about a shared profile.** It lists other installed add-ons that can run
+  programs on your computer or read every website, such as password managers, and recommends a separate
+  profile for converted extensions. It only reads the list; it never changes those add-ons.
+
+### Changed
+
+- The CLI no longer replaces an installed extension with a local file without `--replace`.
+- Same-version files can't be compared with add-ons converted before 2.0.4, because those carry no record.
+  Fox Sake asks before replacing them with a local file; a fresh store download of the same version still
+  reinstalls normally.
+
 ## 2.0.3 — 2026-11-18
 
 Security fixes from a review of 2.0.2.
