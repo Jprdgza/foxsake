@@ -3,6 +3,29 @@
 Notable changes to Fox Sake. Versions follow [semver](https://semver.org). Since 2.0.0 the add-on
 and the CLI share one version number.
 
+## 2.0.5 — 2026-11-19
+
+Security fixes from the final review.
+
+### Security
+
+- **Converted extensions get IDs nobody can guess.** New conversions are installed as
+  `<chromeId>-<random>@foxsake`, and Fox Sake reuses that ID for every update, so data is kept. Before, the
+  ID was `<chromeId>@foxsake`, which anyone could compute. With signing off, someone could send a ready-made
+  `.xpi` with that ID, and Zen would install it as an update that gets all of the extension's saved data.
+  Extensions converted before 2.0.5 keep their old ID, so they don't lose their data.
+- **Fox Sake notices replacements it didn't make.** If a converted extension is installed or updated
+  without going through Fox Sake, the toolbar badge turns into a red "!" and Fox Sake opens a warning asking
+  you to remove it unless you installed it yourself. Zen doesn't let one add-on turn off or remove another,
+  so Fox Sake can't do that for you.
+- **Updates show the permissions they add,** in red above the Install button.
+
+### Changed
+
+- The README says never to install `.xpi` files someone sends you in the profile where signing is off.
+- The CLI keeps each extension's ID in `out/ids.json`. An update installed with the CLI of an extension the
+  add-on also manages shows up as a foreign replacement there; confirm it with **I installed it myself**.
+
 ## 2.0.4 — 2026-11-19
 
 Security fixes from a second review.

@@ -1,6 +1,6 @@
 {
   "name": "foxsake",
-  "version": "2.0.4",
+  "version": "2.0.5",
   "description": "Run Chrome Web Store extensions in Zen Browser and other Firefox-based browsers",
   "main": "src/core/convert.js",
   "scripts": {
